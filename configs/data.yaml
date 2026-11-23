@@ -1,0 +1,34 @@
+# Data pipeline config (see docs/PLAN.md → Data). Run: python -m src.data --config configs/data.yaml --seed 0
+
+dataset:
+  repo_id: Lichess/chess-puzzles
+  revision: 461725966ea46898ec6481372a6326de3281bfbd  # pinned HF commit
+  files:
+    - data/train-00000-of-00003.parquet
+    - data/train-00001-of-00003.parquet
+    - data/train-00002-of-00003.parquet
+  raw_dir: data/raw/lichess
+
+quality_filter:
+  max_rating_deviation: 100  # keep RatingDeviation < 100
+  min_nb_plays: 300          # keep NbPlays > 300
+  min_popularity: 0          # keep Popularity > 0
+
+# Bands: <1000, 1000-1200, ..., 2000-2200, >=2200  (8 bands, index 0-7)
+band_edges: [1000, 1200, 1400, 1600, 1800, 2000, 2200]
+
+# Split totals, divided evenly across bands (remainder goes to the lowest bands).
+# Drawn in this order from one shuffled game order per band, so earlier splits
+# never depend on the sizes of later ones.
+splits:
+  test: 2000
+  dev: 500
+  grpo_candidates: 40000
+  sft: 50000
+
+# Nested prefixes of the SFT split (pilot data-scaling curve).
+sft_subsets:
+  sft_15k: 15000
+  sft_5k: 5000
+
+out_dir: data/splits

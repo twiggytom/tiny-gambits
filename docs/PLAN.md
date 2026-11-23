@@ -83,7 +83,7 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 
 ## Data
 
-Source: Lichess puzzle database (`Lichess/chess-puzzles` on Hugging Face, CC0).
+Source: Lichess puzzle database (`Lichess/chess-puzzles` on Hugging Face, CC0), pinned to revision `461725966ea46898ec6481372a6326de3281bfbd` (6,157,341 puzzles). Pipeline: `src/data.py`, config `configs/data.yaml`, seed `0`.
 
 ### Columns Used
 
@@ -94,14 +94,14 @@ Source: Lichess puzzle database (`Lichess/chess-puzzles` on Hugging Face, CC0).
 | `Moves` | Target. UCI solution line; **the first move is the opponent's setup move** |
 | `Rating` | Stratifying splits; rating-band analysis |
 | `Themes` | Per-theme analysis (test set only) |
-| `GameUrl` | Game ID (part before `/`) used to split by game |
+| `GameId` | Game ID (part before the first `/` or `#`) used to split by game. In this revision every game has exactly one puzzle |
 | `RatingDeviation`, `NbPlays`, `Popularity` | Quality filtering only, then dropped |
 
 ### Preprocessing (in order)
 
-1. **Quality filter:** RatingDeviation < ~100, NbPlays > a few hundred, Popularity > 0
-2. **Deduplicate** on the first four FEN fields (piece placement, side to move, castling, en passant), ignoring move counters
-3. **Split by game:** all puzzles from the same game go into the same split
+1. **Quality filter:** RatingDeviation < 100, NbPlays > 300, Popularity > 0 (3,176,257 remain)
+2. **Deduplicate** on the first four FEN fields (piece placement, side to move, castling, en passant), ignoring move counters, for **both** the raw `FEN` and the prompt position (after the setup move). Keep the most-played puzzle (3,158,250 remain)
+3. **Split by game:** all puzzles from the same game go into the same split. Splits are drawn per rating band from one seeded shuffle, in the order test → dev → GRPO candidates → SFT
 4. **Apply the setup move:** the prompt position is `FEN` after playing the first move in `Moves`; the model's first move is the second move in `Moves`
 
 ### Splits
@@ -110,12 +110,12 @@ All splits are disjoint. Save the list of PuzzleIds for each split to disk.
 
 | Split | Size | Sampling |
 |---|---|---|
-| SFT | 50,000 | Stratified evenly across rating bands |
+| SFT | 50,000 | 6,250 per rating band; nested pilot subsets `sft_15k`, `sft_5k` |
 | GRPO pool | 8,000 | Filtered by difficulty (see below) |
-| Dev | 500 | Stratified by rating; pilot, sanity checks, tuning |
+| Dev | 500 | Evenly across bands (63 × 4 lower, 62 × 4 upper); pilot, sanity checks, tuning |
 | Test | 2,000 | 8 rating bands × 250; **touched only for final evaluation** |
 
-**GRPO pool filtering:** draw ~30–40k candidates evenly across ratings, sample the SFT model 16 times per position, keep positions it solves **sometimes but not always**, then sample 8,000 puzzles. The same filtered pool is used for both reward conditions. Record the pool's rating distribution.
+**GRPO pool filtering:** draw 40,000 candidates (5,000 per rating band; `data/splits/grpo_candidates.txt`), sample the SFT model 16 times per position, keep positions it solves **sometimes but not always**, then sample 8,000 puzzles. The same filtered pool is used for both reward conditions. Record the pool's rating distribution.
 
 > Limitation: this filter removes always-failed puzzles, which is where dense reward should have its biggest advantage, so results may understate the Stockfish reward's benefit. (Alternative considered: keep always-failed puzzles.)
 
@@ -189,7 +189,7 @@ Write these down **before** running the main experiment. Draft:
 - [ ] GRPO learning rate
 - [ ] Stockfish node limit
 - [ ] Stockfish version
-- [ ] Rating band boundaries (from the rating distribution)
+- [x] Rating band boundaries: `<1000, 1000–1200, 1200–1400, 1400–1600, 1600–1800, 1800–2000, 2000–2200, ≥2200` (8 bands)
 - [ ] Illegal-move penalty value
 - [ ] Final list of analyzed themes
 - [ ] Prompt template text

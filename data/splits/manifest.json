@@ -1,0 +1,140 @@
+{
+  "seed": 0,
+  "dataset": "Lichess/chess-puzzles",
+  "revision": "461725966ea46898ec6481372a6326de3281bfbd",
+  "config": {
+    "dataset": {
+      "repo_id": "Lichess/chess-puzzles",
+      "revision": "461725966ea46898ec6481372a6326de3281bfbd",
+      "files": [
+        "data/train-00000-of-00003.parquet",
+        "data/train-00001-of-00003.parquet",
+        "data/train-00002-of-00003.parquet"
+      ],
+      "raw_dir": "data/raw/lichess"
+    },
+    "quality_filter": {
+      "max_rating_deviation": 100,
+      "min_nb_plays": 300,
+      "min_popularity": 0
+    },
+    "band_edges": [
+      1000,
+      1200,
+      1400,
+      1600,
+      1800,
+      2000,
+      2200
+    ],
+    "splits": {
+      "test": 2000,
+      "dev": 500,
+      "grpo_candidates": 40000,
+      "sft": 50000
+    },
+    "sft_subsets": {
+      "sft_15k": 15000,
+      "sft_5k": 5000
+    },
+    "out_dir": "data/splits"
+  },
+  "counts": {
+    "raw": 6157341,
+    "after_quality_filter": 3176257,
+    "after_raw_fen_dedup": 3162387,
+    "dropped_invalid_line": 0,
+    "after_prompt_fen_dedup": 3158250,
+    "games": 3158250,
+    "pool_per_band": [
+      453787,
+      480299,
+      461570,
+      495051,
+      418953,
+      334152,
+      258308,
+      256130
+    ]
+  },
+  "splits": {
+    "test": {
+      "n": 2000,
+      "per_band": [
+        250,
+        250,
+        250,
+        250,
+        250,
+        250,
+        250,
+        250
+      ]
+    },
+    "dev": {
+      "n": 500,
+      "per_band": [
+        63,
+        63,
+        63,
+        63,
+        62,
+        62,
+        62,
+        62
+      ]
+    },
+    "grpo_candidates": {
+      "n": 40000,
+      "per_band": [
+        5000,
+        5000,
+        5000,
+        5000,
+        5000,
+        5000,
+        5000,
+        5000
+      ]
+    },
+    "sft": {
+      "n": 50000,
+      "per_band": [
+        6250,
+        6250,
+        6250,
+        6250,
+        6250,
+        6250,
+        6250,
+        6250
+      ]
+    },
+    "sft_15k": {
+      "n": 15000,
+      "per_band": [
+        1875,
+        1875,
+        1875,
+        1875,
+        1875,
+        1875,
+        1875,
+        1875
+      ]
+    },
+    "sft_5k": {
+      "n": 5000,
+      "per_band": [
+        625,
+        625,
+        625,
+        625,
+        625,
+        625,
+        625,
+        625
+      ]
+    }
+  }
+}

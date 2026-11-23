@@ -107,6 +107,18 @@ def test_check_move_no_piece_is_illegal():
     assert check_move("e4e5", chess.Board())[0] is MoveStatus.ILLEGAL
 
 
+def test_pinned_piece_move_is_illegal():
+    # White knight on e2 is pinned to the king on e1 by the rook on e8.
+    board = chess.Board("4r1k1/8/8/8/8/8/4N3/4K3 w - - 0 1")
+    assert check_move("e2c3", board)[0] is MoveStatus.ILLEGAL
+
+
+def test_king_into_check_is_illegal():
+    board = chess.Board("4r1k1/8/8/8/8/8/8/3K4 w - - 0 1")
+    assert check_move("d1e1", board)[0] is MoveStatus.ILLEGAL
+    assert check_move("d1c1", board)[0] is MoveStatus.LEGAL
+
+
 def test_check_move_unparseable():
     assert check_move("hello", chess.Board()) == (MoveStatus.UNPARSEABLE, None)
 

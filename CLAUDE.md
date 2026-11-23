@@ -50,7 +50,7 @@ src/
   train_grpo.py
   evaluate.py         # interactive eval harness + metrics
   analysis.py         # bootstrap CIs, McNemar, plots
-configs/              # one config per run
+configs/              # one config per run (data.yaml = data pipeline)
 notebooks/            # thin Colab / Kaggle runners
 data/splits/          # saved PuzzleId lists per split
 tests/
@@ -61,6 +61,7 @@ tests/
 ```bash
 pip install -r requirements.txt   # setup
 python -m pytest                  # run tests (from repo root)
+python -m src.data --config configs/data.yaml --seed 0   # build data/splits/ (~1 min)
 ```
 
 _Training and eval commands to be added as those components are built._
