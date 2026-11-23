@@ -1,0 +1,212 @@
+# PLAN.md — Post-Training Methods for Chess Puzzle Solving
+
+Research question: how do different post-training methods (SFT, GRPO with dense vs. sparse reward) affect a small LLM's ability to solve chess puzzles?
+
+> **For Claude Code:** This file is the source of truth for the project. Everything under "Frozen Design Choices" is fixed — do not change these values without asking. Items under "Open Items" are set during the pilot and then frozen here.
+
+---
+
+## Frozen Design Choices
+
+### Model & Training
+
+| Setting | Value |
+|---|---|
+| Base model | `Qwen2.5-3B-Instruct` |
+| Precision | 4-bit base weights (QLoRA) via Unsloth; compute in fp16 on T4, bf16 on L4 |
+| LoRA | rank 16, alpha 32, all linear layers — identical for SFT and GRPO |
+| Board representation | FEN |
+| Move notation | UCI (e.g. `e2e4`, `e7e8q`) |
+| Output | Moves only, no reasoning |
+| Output cap | 16 tokens (output hitting the cap without a valid move = unparseable) |
+
+### SFT
+
+- 1 epoch over the SFT split
+- Run on Kaggle, single NVIDIA T4, fp16
+- Adapter is **merged** into the base model after training → this merged model is the starting point for all GRPO runs
+
+### GRPO
+
+| Setting | Value |
+|---|---|
+| Starting point | Merged SFT model (same checkpoint for every GRPO run) |
+| Steps | 2,000 (final value confirmed by pilot) |
+| Prompts per step | 8 |
+| Completions per prompt | 16 |
+| Sampling temperature | ~1.0 |
+| Checkpoints | Every 250 steps |
+| Seeds | 2 per condition (seeds `1` and `2`) |
+| Compute | Colab Pro, NVIDIA L4 (24 GB), bf16 |
+
+- **No checkpoint selection.** Every GRPO run uses the final checkpoint at the same step count.
+- Intermediate checkpoints are used only for learning-curve plots.
+- Training format: one position per prompt, one move per completion. Multi-move puzzles are split into one training position per player move.
+
+### Rewards
+
+| Reward | Definition |
+|---|---|
+| Stockfish (dense) | Change in win probability after the move, normalized to [-1, 1] |
+| Binary (sparse) | 1 if the move is the solution move **or any checkmating move**, 0 otherwise |
+| Illegal / unparseable | Same fixed penalty under both rewards |
+
+### Stockfish
+
+- Run locally via `python-chess` (no external APIs)
+- Fixed Stockfish version, same binary on Colab and Kaggle (record version number here)
+- Search limited by **fixed node count** (value set during pilot)
+- Win probability via `score.wdl(model="sf").expectation()`
+- **Cache evaluations** keyed by (position, move) — many of the 16 completions repeat
+
+### Compute & Hardware
+
+| Platform | Hardware | Used for |
+|---|---|---|
+| Kaggle (free) | 2× NVIDIA T4 (16 GB each) | SFT, GRPO pool difficulty filtering, all evaluation |
+| Colab Pro | 1× NVIDIA L4 (24 GB) | GRPO runs only |
+| CPU (both platforms) | — | Stockfish |
+| Hugging Face Hub | — | Storing LoRA adapters and moving them between platforms |
+
+**Hardware rules:**
+
+- **GRPO always runs on the L4.** It fits 3B QLoRA GRPO with 16-token outputs comfortably, supports bf16, and costs far fewer compute units per hour than an A100. All 4 GRPO runs use the same GPU type.
+- **A100 is a fallback only** (if the L4 is unavailable for an extended period). If used, record it for that run.
+- **SFT uses one T4.** Unsloth trains on a single GPU; the second T4 is free for running filtering or eval jobs in parallel.
+- **T4 has no bf16** → SFT and Kaggle inference use fp16. GRPO on the L4 uses bf16.
+- **Evaluation:** run one eval job per T4 in parallel (e.g., two models at once).
+- **No TPUs.** Unsloth, bitsandbytes, and vLLM require NVIDIA GPUs (CUDA).
+- Run `!nvidia-smi` at the start of every session and log the GPU name with each run.
+
+---
+
+## Data
+
+Source: Lichess puzzle database (`Lichess/chess-puzzles` on Hugging Face, CC0).
+
+### Columns Used
+
+| Column | Role |
+|---|---|
+| `PuzzleId` | Tracing results; saved ID lists per split |
+| `FEN` | Input. Position **before** the opponent's setup move |
+| `Moves` | Target. UCI solution line; **the first move is the opponent's setup move** |
+| `Rating` | Stratifying splits; rating-band analysis |
+| `Themes` | Per-theme analysis (test set only) |
+| `GameUrl` | Game ID (part before `/`) used to split by game |
+| `RatingDeviation`, `NbPlays`, `Popularity` | Quality filtering only, then dropped |
+
+### Preprocessing (in order)
+
+1. **Quality filter:** RatingDeviation < ~100, NbPlays > a few hundred, Popularity > 0
+2. **Deduplicate** on the first four FEN fields (piece placement, side to move, castling, en passant), ignoring move counters
+3. **Split by game:** all puzzles from the same game go into the same split
+4. **Apply the setup move:** the prompt position is `FEN` after playing the first move in `Moves`; the model's first move is the second move in `Moves`
+
+### Splits
+
+All splits are disjoint. Save the list of PuzzleIds for each split to disk.
+
+| Split | Size | Sampling |
+|---|---|---|
+| SFT | 50,000 | Stratified evenly across rating bands |
+| GRPO pool | 8,000 | Filtered by difficulty (see below) |
+| Dev | 500 | Stratified by rating; pilot, sanity checks, tuning |
+| Test | 2,000 | 8 rating bands × 250; **touched only for final evaluation** |
+
+**GRPO pool filtering:** draw ~30–40k candidates evenly across ratings, sample the SFT model 16 times per position, keep positions it solves **sometimes but not always**, then sample 8,000 puzzles. The same filtered pool is used for both reward conditions. Record the pool's rating distribution.
+
+> Limitation: this filter removes always-failed puzzles, which is where dense reward should have its biggest advantage, so results may understate the Stockfish reward's benefit. (Alternative considered: keep always-failed puzzles.)
+
+**Theme coverage:** pick ~8–10 themes to analyze (e.g. fork, pin, mateIn1, mateIn2, discoveredAttack, backRankMate, hangingPiece, sacrifice). Each must appear in ≥100 test puzzles; otherwise top up from the same rating bands or drop the theme.
+
+---
+
+## Independent Variable
+
+**Post-training technique** (1 SFT run + 4 GRPO runs):
+
+| # | Condition | Runs |
+|---|---|---|
+| 1 | Base instruct model (zero-shot) | eval only |
+| 2 | Base + SFT | 1 |
+| 3 | Base + SFT + GRPO, Stockfish reward (dense) | 2 seeds |
+| 4 | Base + SFT + GRPO, binary reward (sparse) | 2 seeds |
+
+## Controlled Variables
+
+Held constant across all conditions: model, LoRA settings, data splits, GRPO steps, prompts and completions per step, output cap, Stockfish version and node limit, prompt template, decoding settings.
+
+---
+
+## Evaluation
+
+- **Protocol: interactive.** Model plays a move → opponent's reply from the solution is applied → repeat until the puzzle ends. Any checkmating move is accepted on the final move.
+- **Decoding:** greedy (temperature 0)
+- **Prompt template:** one fixed template for all five conditions, including zero-shot, with clear format instructions
+- **Compute:** Kaggle, 2× NVIDIA T4 (one eval job per GPU), vLLM, fp16
+
+### Dependent Variables
+
+1. First-move accuracy
+2. Full-solution accuracy (every player move correct)
+3. Illegal / unparseable rate
+4. Accuracy by rating band
+5. Accuracy by tactical theme
+6. Stockfish win-probability evaluation of the model's moves (average centipawn loss as secondary)
+7. GRPO learning curves (reward and dev accuracy every 250 steps)
+
+### Statistics
+
+- Bootstrap confidence intervals on all metrics
+- McNemar's test for pairwise comparisons between models (same test puzzles)
+
+---
+
+## Hypotheses
+
+Write these down **before** running the main experiment. Draft:
+
+- H1: SFT + GRPO outperforms SFT alone.
+- H2: Stockfish (dense) reward outperforms binary (sparse) reward, with the largest gap at higher rating bands.
+- H3: Dense reward produces faster-rising learning curves than sparse reward.
+
+---
+
+## Pilot Phase (before main runs)
+
+1. SFT data-scaling curve: 5k / 15k / 50k at 1.5B, evaluated on dev
+2. Zero-shot and SFT sanity checks on dev
+3. 20-step GRPO timing test at 3B on the L4 (check compute units used per hour in Colab's resource monitor)
+4. 500-step GRPO run → set final step count
+5. Set the open items below, then freeze them in this file
+
+## Open Items
+
+- [ ] SFT learning rate
+- [ ] GRPO learning rate
+- [ ] Stockfish node limit
+- [ ] Stockfish version
+- [ ] Rating band boundaries (from the rating distribution)
+- [ ] Illegal-move penalty value
+- [ ] Final list of analyzed themes
+- [ ] Prompt template text
+
+---
+
+## Stack
+
+- `chess` (python-chess): board logic, legality, UCI parsing, Stockfish control
+- `unsloth`, `trl`, `transformers`, `peft`, `datasets`: training
+- `vllm`: GRPO sampling and evaluation
+- `pandas`, `scipy`, `statsmodels`: data prep and statistics
+- Weights & Biases (optional): logging across Colab sessions
+- Secrets (`HF_TOKEN`, `WANDB_API_KEY`) stored in Colab/Kaggle secrets, never in notebooks
+
+## Rules for Development
+
+- Never use the test set during development, tuning, or debugging — use dev.
+- Never change a frozen value without updating this file.
+- Push every adapter to the Hugging Face Hub immediately after training.
+- Checkpoint often; Colab sessions disconnect.
+- Disconnect Colab runtimes when idle; idle GPUs still use compute units.
