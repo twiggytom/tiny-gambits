@@ -6,6 +6,16 @@ Research project comparing post-training methods (SFT vs. SFT + GRPO with Stockf
 
 This project is built **one component at a time**: data pipeline → chess utils / rewards → SFT → GRPO → eval harness → analysis. Don't one-shot the whole project or scaffold components that weren't asked for. Finish, test, and agree on the current component before starting the next.
 
+## Log everything in `docs/WRITEUP.md`
+
+`docs/WRITEUP.md` is the user's local-only (gitignored) notes file for the final writeup. **After finishing any decision or action, record it there before ending the turn:**
+
+- **Decisions** (a value chosen, an open item settled, a plan change, a design choice): add a row to the *Design decision log* with the date, the decision, and the rationale.
+- **Actions** (a component built, a pipeline run, a test or validation done, an experiment or training run): add or update that component's section, or *Testing and validation*, with what was done, the exact numbers and results, config/seed/versions, and anything surprising.
+- Keep *Known limitations*, *Open items and next steps*, *Reproducibility*, and the "Last updated" date current.
+- Write in enough detail to be lifted into the writeup directly: real counts and tables, not summaries like "it worked". Report failures and caveats too.
+- If the file is missing, recreate it with the same section structure and say so.
+
 ## When to read `docs/PLAN.md`
 
 `docs/PLAN.md` is the full experimental design and the source of truth. Read it:
@@ -40,9 +50,11 @@ For routine edits within a component you've already read the plan for, you don't
 
 ```
 docs/PLAN.md          # full experimental design
+docs/WRITEUP.md       # local-only writeup notes (gitignored); update after each component
 src/
   data.py             # loading, quality filters, dedup, splitting by game
   prompts.py          # the single fixed prompt template
+  sft_data.py         # SFT examples (one per player move) + dev/test leakage filter
   chess_utils.py      # setup move, UCI parsing, legality, solution checking
   stockfish.py        # engine wrapper, node-limited eval, caching
   rewards.py          # Stockfish (dense) and binary (sparse) rewards
@@ -62,6 +74,7 @@ tests/
 pip install -r requirements.txt   # setup
 python -m pytest                  # run tests (from repo root)
 python -m src.data --config configs/data.yaml --seed 0   # build data/splits/ (~1 min)
+python -m src.sft_data --config configs/data.yaml --split sft --seed 0   # build data/processed/sft.jsonl (also sft_15k, sft_5k)
 ```
 
 _Training and eval commands to be added as those components are built._

@@ -234,3 +234,31 @@ def test_run_puzzle_unparseable_output():
 def test_run_puzzle_illegal_on_second_move():
     r = run_puzzle(*PUZZLE_A, get_move=scripted(["e2e8", "e2e8"]))  # queen no longer on e2
     assert r.first_move_correct and r.outcome == "illegal"
+
+
+# --- player_positions -------------------------------------------------------
+
+
+def test_player_positions_multi_move():
+    from src.chess_utils import player_positions
+
+    positions = player_positions(*PUZZLE_A)
+    assert [m.uci() for _, m in positions] == ["e2e8", "e1e8"]
+    b0, b1 = positions[0][0], positions[1][0]
+    assert b0.turn == chess.WHITE and b1.turn == chess.WHITE
+    assert b0.fen() == apply_setup_move(*PUZZLE_A)[0].fen()
+    # Second position: after Qxe8+ Qxe8, the queen on e2 is gone and Black's queen is on e8.
+    assert b1.piece_at(chess.E2) is None
+    assert b1.piece_at(chess.E8) == chess.Piece(chess.QUEEN, chess.BLACK)
+    for board, move in positions:
+        assert board.is_legal(move)
+
+
+def test_player_positions_mate_in_one_and_independent_boards():
+    from src.chess_utils import player_positions
+
+    positions = player_positions(*PUZZLE_C)
+    assert len(positions) == 1
+    board, move = positions[0]
+    board.push(move)  # mutating a returned board must not affect a fresh call
+    assert player_positions(*PUZZLE_C)[0][0].fen() != board.fen()

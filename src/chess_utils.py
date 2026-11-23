@@ -44,6 +44,21 @@ def apply_setup_move(fen: str, moves: str) -> tuple[chess.Board, list[chess.Move
     return board, parsed[1:]
 
 
+def player_positions(fen: str, moves: str) -> list[tuple[chess.Board, chess.Move]]:
+    """Every position where the player is to move, paired with its solution move.
+
+    Follows the solution line (opponent replies included), so a puzzle with
+    ``k`` player moves yields ``k`` positions. Boards are independent copies.
+    """
+    board, solution = apply_setup_move(fen, moves)
+    out = []
+    for i, move in enumerate(solution):
+        if i % 2 == 0:
+            out.append((board.copy(stack=False), move))
+        board.push(move)
+    return out
+
+
 def parse_uci(text: str) -> chess.Move | None:
     """Parse raw model output as a single UCI move (strict-ish).
 

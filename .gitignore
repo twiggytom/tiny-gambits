@@ -65,3 +65,6 @@ stockfish*
 results/raw/
 logs/
 *.log
+
+# --- Personal writeup notes (local only) ---
+docs/WRITEUP.md

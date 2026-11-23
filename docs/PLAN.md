@@ -24,6 +24,8 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 ### SFT
 
 - 1 epoch over the SFT split
+- **One example per player move** (multi-move puzzles give several examples): 50,000 puzzles → 123,301 examples. The target is the bare UCI move. Built by `src/sft_data.py` into `data/processed/`
+- **Leakage rule (all training data, SFT and GRPO):** drop any training position whose first 4 FEN fields match any player-move position of a dev or test puzzle
 - Run on Kaggle, single NVIDIA T4, fp16
 - Adapter is **merged** into the base model after training → this merged model is the starting point for all GRPO runs
 
@@ -119,7 +121,7 @@ All splits are disjoint. Save the list of PuzzleIds for each split to disk.
 
 > Limitation: this filter removes always-failed puzzles, which is where dense reward should have its biggest advantage, so results may understate the Stockfish reward's benefit. (Alternative considered: keep always-failed puzzles.)
 
-**Theme coverage:** pick ~8–10 themes to analyze (e.g. fork, pin, mateIn1, mateIn2, discoveredAttack, backRankMate, hangingPiece, sacrifice). Each must appear in ≥100 test puzzles; otherwise top up from the same rating bands or drop the theme.
+**Theme coverage:** pick ~8–10 themes to analyze (e.g. fork, pin, mateIn1, mateIn2, discoveredAttack, sacrifice). Each must appear in ≥100 test puzzles; otherwise drop the theme (the test set is not topped up). `backRankMate` (38) and `hangingPiece` (83) are dropped. Test-set counts for the rest: fork 256, mateIn2 213, sacrifice 197, mateIn1 167, pin 129, discoveredAttack 128; other eligible tactical themes: kingsideAttack 164, advancedPawn 136, defensiveMove 126, attraction 112.
 
 ---
 
@@ -145,7 +147,9 @@ Held constant across all conditions: model, LoRA settings, data splits, GRPO ste
 
 - **Protocol: interactive.** Model plays a move → opponent's reply from the solution is applied → repeat until the puzzle ends. Any checkmating move is accepted at any point in the puzzle and ends it as solved.
 - **Decoding:** greedy (temperature 0)
-- **Prompt template:** one fixed template for all evaluated models (SFT and all GRPO runs), with clear format instructions
+- **Prompt template (v1, `src/prompts.py`):** one fixed template for all evaluated models (SFT and all GRPO runs), applied with Qwen's chat template
+  - System: `You are a chess engine. Reply with a single move in UCI notation.`
+  - User: `Position (FEN): {fen}` / `You are playing {White|Black}. Find the best move.` / `Answer with only the move in UCI notation (e.g. e2e4, e7e8q).` (three lines)
 - **Compute:** Kaggle, 2× NVIDIA T4 (one eval job per GPU), vLLM, fp16
 
 ### Dependent Variables
@@ -192,7 +196,7 @@ Write these down **before** running the main experiment. Draft:
 - [x] Rating band boundaries: `<1000, 1000–1200, 1200–1400, 1400–1600, 1600–1800, 1800–2000, 2000–2200, ≥2200` (8 bands)
 - [ ] Illegal-move penalty value
 - [ ] Final list of analyzed themes
-- [ ] Prompt template text
+- [x] Prompt template text: v1, see Evaluation → Prompt template
 
 ---
 
