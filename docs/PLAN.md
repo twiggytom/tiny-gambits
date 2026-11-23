@@ -151,15 +151,17 @@ Held constant across all conditions: model, LoRA settings, data splits, GRPO ste
   - System: `You are a chess engine. Reply with a single move in UCI notation.`
   - User: `Position (FEN): {fen}` / `You are playing {White|Black}. Find the best move.` / `Answer with only the move in UCI notation (e.g. e2e4, e7e8q).` (three lines)
 - **Compute:** Kaggle, 2× NVIDIA T4 (one eval job per GPU), vLLM, fp16
+- **Harness:** `src/evaluate.py` (config `configs/eval.yaml`). Batched interactive loop (one generate call per ply across all active puzzles). It saves `puzzles.jsonl` (per puzzle, with every model move), `metrics.json` and `run_info.json` to `results/{run_name}/{split}/`, and **these are committed**. `results/raw/` is ignored scratch space
+- **Test-set guard:** `--split test` is refused unless `--final` is passed
 
 ### Dependent Variables
 
 1. First-move accuracy
 2. Full-solution accuracy (every player move correct)
-3. Illegal / unparseable rate
+3. Illegal / unparseable rate: **per model move** (illegal or unparseable outputs ÷ all model moves attempted); the first-move-only rate is also reported
 4. Accuracy by rating band
 5. Accuracy by tactical theme
-6. Stockfish win-probability evaluation of the model's moves (average centipawn loss as secondary)
+6. Stockfish win-probability evaluation of the model's moves (average centipawn loss as secondary). Computed **post hoc** from the saved per-move records (position + move), so models aren't re-run
 7. GRPO learning curves (reward and dev accuracy every 250 steps)
 
 ### Statistics

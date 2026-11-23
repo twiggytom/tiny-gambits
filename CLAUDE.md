@@ -60,7 +60,7 @@ src/
   rewards.py          # Stockfish (dense) and binary (sparse) rewards
   train_sft.py
   train_grpo.py
-  evaluate.py         # interactive eval harness + metrics
+  evaluate.py         # batched interactive eval harness, metrics, saved per-puzzle results (vLLM / HF backends)
   analysis.py         # bootstrap CIs, McNemar, plots
 configs/              # one config per run (data.yaml = data pipeline)
 notebooks/            # thin Colab / Kaggle runners
@@ -75,6 +75,9 @@ pip install -r requirements.txt   # setup
 python -m pytest                  # run tests (from repo root)
 python -m src.data --config configs/data.yaml --seed 0   # build data/splits/ (~1 min)
 python -m src.sft_data --config configs/data.yaml --split sft --seed 0   # build data/processed/sft.jsonl (also sft_15k, sft_5k)
+python -m src.evaluate --config configs/eval.yaml --model <path|hub id> --backend vllm --split dev --run-name <name> --seed 0   # GPU eval; test split needs --final
+# Local CPU smoke test (needs `pip install torch`; writes to ignored results/raw/):
+python -m src.evaluate --model Qwen/Qwen2.5-0.5B-Instruct --backend hf --split dev --limit 20 --run-name raw/smoke --seed 0
 ```
 
 _Training and eval commands to be added as those components are built._

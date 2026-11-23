@@ -1,0 +1,25 @@
+# Eval harness config (see docs/PLAN.md → Evaluation).
+# Run: python -m src.evaluate --config configs/eval.yaml --model <path|hub id> --backend vllm --split dev --run-name <name> --seed 0
+
+data_config: configs/data.yaml
+
+decoding:
+  temperature: 0      # greedy
+  max_tokens: 16      # output cap; hitting it without a valid move = unparseable
+
+batch_size: 512       # prompts per generate call (vLLM batches internally too)
+
+results_dir: results
+
+# Themes reported by the harness (test-set count >= 100). Final analysis picks from these.
+themes:
+  - fork
+  - pin
+  - mateIn1
+  - mateIn2
+  - discoveredAttack
+  - sacrifice
+  - kingsideAttack
+  - advancedPawn
+  - defensiveMove
+  - attraction

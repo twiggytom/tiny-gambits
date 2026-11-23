@@ -114,6 +114,80 @@ class PuzzleResult:
     n_player_moves: int
     outcome: str  # "solved" | "wrong" | "illegal" | "unparseable"
     model_outputs: list[str] = field(default_factory=list)
+    # One record per model move: ply, fen (position before the move), output,
+    # status ("legal" | "illegal" | "unparseable"), uci (parsed move or None), correct.
+    moves: list[dict] = field(default_factory=list)
+
+
+class PuzzleState:
+    """Stepping state machine for the interactive evaluation protocol on one puzzle.
+
+    ``board`` is the current position with the player to move. Call ``step(text)``
+    with the model's raw output for that position until ``done``; then ``result()``.
+    The puzzle stops on unparseable, illegal or wrong output. Any checkmating move
+    ends it as solved, at any point. Otherwise the opponent's reply from the
+    solution line is played and the next player position is exposed.
+    """
+
+    def __init__(self, fen: str, moves: str, puzzle_id: str | None = None):
+        self.puzzle_id = puzzle_id
+        self.board, self._solution = apply_setup_move(fen, moves)
+        self._i = 0  # index into solution of the next player move
+        self.n_player_moves = (len(self._solution) + 1) // 2
+        self.n_correct = 0
+        self.outputs: list[str] = []
+        self.move_records: list[dict] = []
+        self.done = False
+        self._solved = False
+        self._outcome: str | None = None
+
+    def _finish(self, solved: bool, outcome: str) -> None:
+        self.done, self._solved, self._outcome = True, solved, outcome
+
+    def step(self, text: str) -> None:
+        if self.done:
+            raise RuntimeError("step() called on a finished puzzle")
+        board, solution_move = self.board, self._solution[self._i]
+        status, move = check_move(text, board)
+        correct = status is MoveStatus.LEGAL and is_correct_move(board, move, solution_move)
+        self.outputs.append(text)
+        self.move_records.append(
+            {
+                "ply": self._i // 2,
+                "fen": board.fen(),
+                "output": text,
+                "status": status.value,
+                "uci": move.uci() if move is not None else None,
+                "correct": correct,
+            }
+        )
+        if status is not MoveStatus.LEGAL:
+            return self._finish(False, status.value)
+        if not correct:
+            return self._finish(False, "wrong")
+        self.n_correct += 1
+        if is_checkmate_move(board, move):
+            return self._finish(True, "solved")
+        board.push(move)
+        if self._i + 1 < len(self._solution):
+            board.push(self._solution[self._i + 1])
+        self._i += 2
+        if self._i >= len(self._solution):
+            self._finish(True, "solved")
+
+    def result(self) -> PuzzleResult:
+        if not self.done:
+            raise RuntimeError("result() called before the puzzle finished")
+        return PuzzleResult(
+            puzzle_id=self.puzzle_id,
+            first_move_correct=self.n_correct >= 1,
+            solved=self._solved,
+            n_correct_player_moves=self.n_correct,
+            n_player_moves=self.n_player_moves,
+            outcome=self._outcome,
+            model_outputs=list(self.outputs),
+            moves=list(self.move_records),
+        )
 
 
 def run_puzzle(
@@ -122,44 +196,12 @@ def run_puzzle(
     get_move: Callable[[chess.Board], str],
     puzzle_id: str | None = None,
 ) -> PuzzleResult:
-    """Run the interactive evaluation protocol on one puzzle.
+    """Run the interactive evaluation protocol on one puzzle (sequential).
 
-    The setup move is applied, then for each player turn ``get_move(board)`` is
-    called with a copy of the current position and its raw output is checked.
-    The puzzle stops on unparseable, illegal or wrong output. Any checkmating
-    move ends the puzzle as solved, at any point. Otherwise the opponent's reply
-    from the solution line is played and the loop continues.
+    ``get_move(board)`` is called with a copy of each player position. See
+    ``PuzzleState`` for the protocol; ``src/evaluate.py`` runs it batched.
     """
-    board, solution = apply_setup_move(fen, moves)
-    n_player_moves = (len(solution) + 1) // 2
-    outputs: list[str] = []
-    n_correct = 0
-
-    def result(solved: bool, outcome: str) -> PuzzleResult:
-        return PuzzleResult(
-            puzzle_id=puzzle_id,
-            first_move_correct=n_correct >= 1,
-            solved=solved,
-            n_correct_player_moves=n_correct,
-            n_player_moves=n_player_moves,
-            outcome=outcome,
-            model_outputs=outputs,
-        )
-
-    for i in range(0, len(solution), 2):
-        text = get_move(board.copy())
-        outputs.append(text)
-        status, move = check_move(text, board)
-        if status is not MoveStatus.LEGAL:
-            return result(False, status.value)
-        assert move is not None
-        if not is_correct_move(board, move, solution[i]):
-            return result(False, "wrong")
-        n_correct += 1
-        if is_checkmate_move(board, move):
-            return result(True, "solved")
-        board.push(move)
-        if i + 1 < len(solution):
-            board.push(solution[i + 1])
-
-    return result(True, "solved")
+    state = PuzzleState(fen, moves, puzzle_id)
+    while not state.done:
+        state.step(get_move(state.board.copy()))
+    return state.result()
