@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from src.chess_utils import PuzzleState, is_correct_move, player_positions, run_puzzle
-from src.evaluate import compute_metrics, evaluate, load_results, parse_args, save_results
+from src.evaluate import compute_metrics, dtype_for_capability, evaluate, load_results, parse_args, save_results
 
 PUZZLES = {
     # id: (FEN, Moves, band, themes)
@@ -190,3 +190,12 @@ def test_test_split_requires_final():
         parse_args(base + ["--split", "test"])
     assert parse_args(base + ["--split", "test", "--final"]).final
     assert parse_args(base + ["--split", "dev"]).split == "dev"
+
+
+@pytest.mark.parametrize(
+    "capability, dtype",
+    [((7, 5), "float16"), ((7, 0), "float16"), ((8, 0), "bfloat16"), ((8, 9), "bfloat16"), ((9, 0), "bfloat16")],
+)
+def test_dtype_for_capability(capability, dtype):
+    # T4 = 7.5 must get fp16 (vLLM refuses bf16 below 8.0); L4 = 8.9 and A100 = 8.0 get bf16.
+    assert dtype_for_capability(capability) == dtype

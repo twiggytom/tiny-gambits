@@ -38,10 +38,17 @@ class Backend(Protocol):
     def generate(self, batch: list[Messages]) -> list[str]: ...
 
 
+def dtype_for_capability(capability: tuple[int, int]) -> str:
+    """Native bf16 needs compute capability >= 8.0 (Ampere+: L4, A100); older GPUs (T4 = 7.5) use fp16."""
+    return "bfloat16" if tuple(capability) >= (8, 0) else "float16"
+
+
 def _cuda_dtype() -> str:
+    # Not torch.cuda.is_bf16_supported(): it also counts *emulated* bf16 and returns True on a T4,
+    # which vLLM then rejects.
     import torch
 
-    return "bfloat16" if torch.cuda.is_bf16_supported() else "float16"
+    return dtype_for_capability(torch.cuda.get_device_capability())
 
 
 class VLLMBackend:
