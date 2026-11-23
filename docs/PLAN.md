@@ -27,6 +27,7 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 - **One example per player move** (multi-move puzzles give several examples): 50,000 puzzles → 123,301 examples. The target is the bare UCI move. Built by `src/sft_data.py` into `data/processed/`
 - **Leakage rule (all training data, SFT and GRPO):** drop any training position whose first 4 FEN fields match any player-move position of a dev or test puzzle
 - Run on Kaggle, single NVIDIA T4, fp16
+- **Optimizer settings (all SFT runs):** effective batch 32 (16 per device × grad-accum 2), cosine schedule, 3% warmup, AdamW 8-bit, weight decay 0, max sequence length 256, length grouping on; loss on the assistant move only (50k split = 3,853 steps). LR is set by the pilot sweep (Open Items)
 - Adapter is **merged** into the base model after training → this merged model is the starting point for all GRPO runs
 
 ### GRPO
@@ -183,11 +184,13 @@ Write these down **before** running the main experiment. Draft:
 
 ## Pilot Phase (before main runs)
 
-1. SFT data-scaling curve: 5k / 15k / 50k at 1.5B, evaluated on dev
-2. SFT sanity checks on dev
-3. 20-step GRPO timing test at 3B on the L4 (check compute units used per hour in Colab's resource monitor)
-4. 500-step GRPO run → set final step count
-5. Set the open items below, then freeze them in this file
+0. Kaggle bring-up: run the eval harness (vLLM, T4, fp16) on dev with the untrained `Qwen2.5-3B-Instruct` as an environment smoke test only (results in ignored `results/raw/`, not a reported condition)
+1. SFT learning-rate sweep at **3B** on `sft_5k`: LR ∈ {1e-4, 2e-4, 5e-4}, picked by dev first-move accuracy (full-solution accuracy as tiebreak)
+2. SFT data-scaling curve at **3B**: 5k / 15k / 50k at the chosen LR, evaluated on dev. The 50k run **is** the final SFT model (condition 1); no separate main SFT run
+3. SFT sanity checks on dev
+4. 20-step GRPO timing test at 3B on the L4 (check compute units used per hour in Colab's resource monitor)
+5. 500-step GRPO run → set final step count
+6. Set the open items below, then freeze them in this file
 
 ## Open Items
 
