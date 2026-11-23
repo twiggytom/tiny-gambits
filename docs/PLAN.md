@@ -19,6 +19,7 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 | Move notation | UCI (e.g. `e2e4`, `e7e8q`) |
 | Output | Moves only, no reasoning |
 | Output cap | 16 tokens (output hitting the cap without a valid move = unparseable) |
+| Output parsing | Strip whitespace, lowercase; entire output must be exactly one UCI move, otherwise unparseable |
 
 ### SFT
 
@@ -124,14 +125,15 @@ All splits are disjoint. Save the list of PuzzleIds for each split to disk.
 
 ## Independent Variable
 
-**Post-training technique** (1 SFT run + 4 GRPO runs):
+**Post-training technique** (1 SFT run + 4 GRPO runs → 5 evaluated models):
 
 | # | Condition | Runs |
 |---|---|---|
-| 1 | Base instruct model (zero-shot) | eval only |
-| 2 | Base + SFT | 1 |
-| 3 | Base + SFT + GRPO, Stockfish reward (dense) | 2 seeds |
-| 4 | Base + SFT + GRPO, binary reward (sparse) | 2 seeds |
+| 1 | Base + SFT | 1 |
+| 2 | Base + SFT + GRPO, Stockfish reward (dense) | 2 seeds |
+| 3 | Base + SFT + GRPO, binary reward (sparse) | 2 seeds |
+
+The base instruct model (zero-shot) is not evaluated.
 
 ## Controlled Variables
 
@@ -141,9 +143,9 @@ Held constant across all conditions: model, LoRA settings, data splits, GRPO ste
 
 ## Evaluation
 
-- **Protocol: interactive.** Model plays a move → opponent's reply from the solution is applied → repeat until the puzzle ends. Any checkmating move is accepted on the final move.
+- **Protocol: interactive.** Model plays a move → opponent's reply from the solution is applied → repeat until the puzzle ends. Any checkmating move is accepted at any point in the puzzle and ends it as solved.
 - **Decoding:** greedy (temperature 0)
-- **Prompt template:** one fixed template for all five conditions, including zero-shot, with clear format instructions
+- **Prompt template:** one fixed template for all evaluated models (SFT and all GRPO runs), with clear format instructions
 - **Compute:** Kaggle, 2× NVIDIA T4 (one eval job per GPU), vLLM, fp16
 
 ### Dependent Variables
@@ -176,7 +178,7 @@ Write these down **before** running the main experiment. Draft:
 ## Pilot Phase (before main runs)
 
 1. SFT data-scaling curve: 5k / 15k / 50k at 1.5B, evaluated on dev
-2. Zero-shot and SFT sanity checks on dev
+2. SFT sanity checks on dev
 3. 20-step GRPO timing test at 3B on the L4 (check compute units used per hour in Colab's resource monitor)
 4. 500-step GRPO run → set final step count
 5. Set the open items below, then freeze them in this file

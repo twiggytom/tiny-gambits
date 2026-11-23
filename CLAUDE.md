@@ -2,6 +2,10 @@
 
 Research project comparing post-training methods (SFT vs. SFT + GRPO with Stockfish reward vs. SFT + GRPO with binary reward) for solving Lichess chess puzzles with `Qwen2.5-3B-Instruct`.
 
+## How we work: component by component
+
+This project is built **one component at a time**: data pipeline → chess utils / rewards → SFT → GRPO → eval harness → analysis. Don't one-shot the whole project or scaffold components that weren't asked for. Finish, test, and agree on the current component before starting the next.
+
 ## When to read `docs/PLAN.md`
 
 `docs/PLAN.md` is the full experimental design and the source of truth. Read it:
@@ -19,7 +23,7 @@ For routine edits within a component you've already read the plan for, you don't
 - **Never use the test set** during development, tuning, or debugging. Use the dev split.
 - **Never change a frozen value** from `docs/PLAN.md` without asking first. If a value is changed or an open item is decided, update `docs/PLAN.md` in the same change.
 - **Apply the setup move.** A puzzle's `FEN` is the position *before* the opponent's move; the first move in `Moves` must be played before prompting. The model's first move is the second move in `Moves`.
-- **Moves are UCI** (`e2e4`, `e7e8q`). Any checkmating move counts as correct on a puzzle's final move.
+- **Moves are UCI** (`e2e4`, `e7e8q`). Any checkmating move counts as correct at any point in a puzzle (ends it as solved).
 - **Everything seeded.** Any script with randomness takes a `--seed` argument.
 - **Never hardcode secrets.** Read `HF_TOKEN` and `WANDB_API_KEY` from environment variables / Colab and Kaggle secrets.
 
@@ -54,4 +58,9 @@ tests/
 
 ## Commands
 
-_To be filled in as the project is built (setup, tests, training, eval)._
+```bash
+pip install -r requirements.txt   # setup
+python -m pytest                  # run tests (from repo root)
+```
+
+_Training and eval commands to be added as those components are built._
