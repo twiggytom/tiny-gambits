@@ -71,6 +71,28 @@ class VLLMBackend:
         return [o.outputs[0].text for o in outs]
 
 
+def greedy_generation_config(model_config, max_tokens: int):
+    """A fresh pure-greedy GenerationConfig that keeps only the model's EOS/BOS/pad ids.
+
+    Model repos ship sampling defaults in generation_config.json (Qwen2.5-Instruct: temperature 0.7,
+    top_p 0.8, top_k 20, repetition_penalty 1.05). HF generate() applies repetition_penalty even with
+    do_sample=False, so inheriting it silently changes "greedy" outputs. vLLM's explicit SamplingParams
+    don't read that file, so this makes the HF backend match vLLM.
+    """
+    from transformers import GenerationConfig
+
+    return GenerationConfig(
+        do_sample=False,
+        num_beams=1,
+        repetition_penalty=1.0,
+        no_repeat_ngram_size=0,
+        max_new_tokens=max_tokens,
+        eos_token_id=model_config.eos_token_id,
+        bos_token_id=model_config.bos_token_id,
+        pad_token_id=model_config.pad_token_id,
+    )
+
+
 class HFBackend:
     """Greedy generation with transformers (local CPU smoke tests; GPU fallback)."""
 
@@ -84,6 +106,7 @@ class HFBackend:
         self.tokenizer = AutoTokenizer.from_pretrained(model, padding_side="left")
         self.model = AutoModelForCausalLM.from_pretrained(model, dtype=getattr(torch, self.dtype))
         self.model.to(self.device).eval()
+        self.model.generation_config = greedy_generation_config(self.model.generation_config, max_tokens)
         self.max_tokens = max_tokens
 
     def generate(self, batch: list[Messages]) -> list[str]:
@@ -95,12 +118,7 @@ class HFBackend:
         ]
         enc = self.tokenizer(prompts, return_tensors="pt", padding=True).to(self.device)
         with torch.no_grad():
-            out = self.model.generate(
-                **enc,
-                max_new_tokens=self.max_tokens,
-                do_sample=False,
-                pad_token_id=self.tokenizer.pad_token_id,
-            )
+            out = self.model.generate(**enc, pad_token_id=self.tokenizer.pad_token_id)
         new = out[:, enc["input_ids"].shape[1]:]
         return self.tokenizer.batch_decode(new, skip_special_tokens=True)
 

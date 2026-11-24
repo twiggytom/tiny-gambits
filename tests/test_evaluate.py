@@ -199,3 +199,51 @@ def test_test_split_requires_final():
 def test_dtype_for_capability(capability, dtype):
     # T4 = 7.5 must get fp16 (vLLM refuses bf16 below 8.0); L4 = 8.9 and A100 = 8.0 get bf16.
     assert dtype_for_capability(capability) == dtype
+
+
+def test_greedy_generation_config_drops_model_sampling_defaults():
+    # Qwen2.5-Instruct's generation_config.json: inheriting repetition_penalty=1.05 made HF "greedy" differ
+    # from vLLM on 5/20 dev puzzles (docs/WRITEUP.md §6a).
+    transformers = pytest.importorskip("transformers")
+    from src.evaluate import greedy_generation_config
+
+    qwen = transformers.GenerationConfig(
+        do_sample=True, temperature=0.7, top_p=0.8, top_k=20, repetition_penalty=1.05,
+        eos_token_id=[151645, 151643], bos_token_id=151643, pad_token_id=151643,
+    )
+    g = greedy_generation_config(qwen, max_tokens=16)
+    assert g.do_sample is False and g.max_new_tokens == 16
+    assert g.repetition_penalty == 1.0 and g.num_beams == 1 and g.no_repeat_ngram_size == 0
+    assert g.eos_token_id == [151645, 151643] and g.pad_token_id == 151643
+    # Sampling knobs are not carried over (irrelevant under do_sample=False, but must not leak in).
+    for k in ["temperature", "top_p", "top_k"]:
+        assert getattr(g, k) != getattr(qwen, k), k
+
+
+def test_hf_backend_is_pure_argmax():
+    """HF backend output == a manual argmax loop, even if the model's config asks for a repetition penalty."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("transformers")
+    from huggingface_hub import try_to_load_from_cache
+    from src.evaluate import HFBackend
+    from src.prompts import build_messages
+
+    tiny = "trl-internal-testing/tiny-Qwen2ForCausalLM-2.5"
+    if not isinstance(try_to_load_from_cache(tiny, "config.json"), str):
+        pytest.skip("tiny Qwen test model not in local HF cache")
+    b = HFBackend(tiny, max_tokens=8, seed=0)
+    assert b.model.generation_config.repetition_penalty == 1.0
+    msgs = [build_messages(chess.Board()), build_messages(chess.Board("8/8/8/4k3/8/8/4K3/7R w - - 0 1"))]
+    got = b.generate(msgs)
+    eos = set(b.model.generation_config.eos_token_id if isinstance(b.model.generation_config.eos_token_id, list)
+              else [b.model.generation_config.eos_token_id])
+    for m, out in zip(msgs, got):
+        ids = b.tokenizer(b.tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True), return_tensors="pt").input_ids
+        new = []
+        with torch.no_grad():
+            for _ in range(8):
+                nxt = b.model(ids).logits[0, -1].argmax().item()
+                if nxt in eos:
+                    break
+                new.append(nxt); ids = torch.cat([ids, torch.tensor([[nxt]])], 1)
+        assert out == b.tokenizer.decode(new, skip_special_tokens=True)
