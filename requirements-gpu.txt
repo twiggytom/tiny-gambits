@@ -1,0 +1,10 @@
+# GPU eval environment (Kaggle T4), installed on top of the Kaggle image by notebooks/kaggle_eval.ipynb.
+# Pinned from the Step 0 smoke test's pip freeze (2026-11-23, Python 3.13.16) — see docs/WRITEUP.md §6a.
+# Training (SFT/GRPO: unsloth, trl, peft, bitsandbytes, datasets) will get its own pins when built;
+# note datasets 4.8.5 requires huggingface-hub<2.0, which conflicts with this set (huggingface-hub 2.4.0).
+vllm==0.34.0
+torch==2.14.0
+transformers==5.20.2
+tokenizers==0.23.3
+chess==1.11.2
+PyYAML==6.0.3
