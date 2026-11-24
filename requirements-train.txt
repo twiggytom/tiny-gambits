@@ -1,0 +1,7 @@
+# GPU training environment (SFT now; GRPO later gets its own check). Installed by notebooks/kaggle_sft.ipynb
+# into a venv created with --system-site-packages on top of the eval env (requirements-gpu.txt), so
+# unsloth's dependencies (trl, peft, datasets, bitsandbytes, ...) never change the eval env.
+# UNPINNED for session 1 only (bring-up + LR 2e-4): its pip_freeze_train.txt becomes the pins here,
+# the same way requirements-gpu.txt was pinned from the Step 0 freeze. Pin before session 2 so every sweep run shares one env.
+unsloth
+wandb

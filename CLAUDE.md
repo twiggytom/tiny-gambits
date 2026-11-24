@@ -79,13 +79,16 @@ src/
   chess_utils.py      # setup move, UCI parsing, legality, solution checking
   stockfish.py        # engine wrapper, node-limited eval, caching
   rewards.py          # Stockfish (dense) and binary (sparse) rewards
-  train_sft.py
+  train_sft.py        # SFT (Unsloth QLoRA on GPU / peft on CPU), completion-only loss, Hub checkpoints, merge
+  project_compute.py  # project 15k/50k Kaggle GPU-h from a measured sft_5k run
+  wandb_log.py        # attach dev metrics to the W&B run that trained the model
   train_grpo.py
   evaluate.py         # batched interactive eval harness, metrics, saved per-puzzle results (vLLM / HF backends)
   analysis.py         # bootstrap CIs, McNemar, plots
-configs/              # one config per run (data.yaml = data pipeline, eval.yaml = eval harness)
+configs/              # one config per run (data.yaml = data pipeline, eval.yaml = eval harness, sft_pilot.yaml = SFT LR sweep)
 requirements-gpu.txt  # pinned GPU eval env (Kaggle), from the Step 0 pip freeze
-notebooks/            # thin Colab / Kaggle runners (kaggle_eval.ipynb = vLLM eval on one T4)
+requirements-train.txt # GPU training env (unsloth, wandb), installed in a venv on top of the eval env
+notebooks/            # thin Colab / Kaggle runners (kaggle_eval.ipynb = vLLM eval on one T4; kaggle_sft.ipynb = SFT train → merge → dev eval)
 data/splits/          # saved PuzzleId lists per split
 tests/
 ```
@@ -104,4 +107,13 @@ python -m src.evaluate --model Qwen/Qwen2.5-0.5B-Instruct --backend hf --split d
 
 Kaggle eval: open `notebooks/kaggle_eval.ipynb`, set `MODEL` / `RUN_NAME` / `COMMIT` in the first cell, then Run All (GPU T4 x2, Internet on).
 
-_Training commands to be added as those components are built._
+SFT (Kaggle): open `notebooks/kaggle_sft.ipynb`, set `LRS` / `COMMIT` (and `RESUME` after a killed session), Run All (GPU T4 x2, Internet on, secrets `HF_TOKEN` + `WANDB_API_KEY`). Local CPU smoke test:
+
+```bash
+python -m src.train_sft --config configs/sft_pilot.yaml --lr 2e-4 --seed 0 --backend hf-cpu --offline \
+  --model Qwen/Qwen2.5-0.5B-Instruct --limit 640 --output-dir /tmp/sft_smoke/adapter --merge /tmp/sft_smoke/merged
+python -m src.project_compute --config configs/sft_pilot.yaml --train-info outputs/<run>/train_info.json --timings outputs/<run>/timings.json
+```
+
+- **Secrets:** `HF_TOKEN` and `WANDB_API_KEY` are environment variables in every training script/notebook (locally from `.env`, on Kaggle/Colab copied from platform secrets into `os.environ`). `--offline` skips both for local tests.
+- Run names are `sft-{5k|15k|50k}-lr{lr}` everywhere: `outputs/`, Hub repo `{user}/tiny-gambits-{run}` (private), W&B run, `results/{run}/dev/`.

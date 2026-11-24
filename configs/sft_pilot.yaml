@@ -1,0 +1,54 @@
+# SFT pilot config: LR sweep on sft_5k at 3B (docs/PLAN.md → Pilot Phase step 1).
+# Run (Kaggle T4): python -m src.train_sft --config configs/sft_pilot.yaml --lr 2e-4 --seed 0
+# Local CPU smoke: python -m src.train_sft --config configs/sft_pilot.yaml --lr 2e-4 --seed 0 \
+#   --backend hf-cpu --offline --model trl-internal-testing/tiny-Qwen2ForCausalLM-2.5 --limit 64
+
+data_dir: data/processed
+split: sft_5k                     # data/processed/{split}.jsonl, built by src.sft_data
+
+model:
+  base: Qwen/Qwen2.5-3B-Instruct  # 16-bit base; also what the adapter is merged into
+  max_seq_length: 256
+  load_in_4bit: true              # QLoRA via Unsloth (GPU backend only)
+
+lora:                             # identical for SFT and GRPO (PLAN, frozen)
+  r: 16
+  alpha: 32
+  dropout: 0.0
+  bias: none
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]  # all linear
+
+train:                            # PLAN → SFT → Optimizer settings (frozen); LR comes from --lr
+  epochs: 1
+  per_device_batch_size: 16
+  grad_accum: 2                   # effective batch 32
+  lr_scheduler: cosine
+  warmup_ratio: 0.03
+  optim: adamw_8bit               # hf-cpu backend falls back to adamw_torch (no bitsandbytes on CPU)
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  group_by_length: true
+  logging_steps: 5
+  save_steps: 100                 # checkpoint (adapter + optimizer/scheduler/RNG) pushed to Hub as last-checkpoint/
+
+sweep_lrs: [1.0e-4, 2.0e-4, 5.0e-4]   # PLAN pilot step 1; picked by dev first-move acc (full-solution tiebreak)
+
+output_dir: outputs               # gitignored; outputs/{run_name}/
+
+hub:
+  namespace: null                 # null → the HF_TOKEN owner's username (whoami)
+  repo_prefix: tiny-gambits-      # repo = {namespace}/tiny-gambits-{run_name}
+  private: true
+
+wandb:
+  project: tiny-gambits
+
+# Example counts for the compute projection (src.project_compute); from data/processed/*.stats.json.
+projection:
+  sft_15k: 37026
+  sft: 123301
+  kaggle_session_hours: 12
+  kaggle_weekly_hours: 30

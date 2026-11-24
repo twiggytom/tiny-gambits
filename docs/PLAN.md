@@ -14,7 +14,7 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 |---|---|
 | Base model | `Qwen2.5-3B-Instruct` |
 | Precision | 4-bit base weights (QLoRA) via Unsloth; compute in fp16 on T4, bf16 on L4 |
-| LoRA | rank 16, alpha 32, all linear layers — identical for SFT and GRPO |
+| LoRA | rank 16, alpha 32, dropout 0, bias none, all linear layers (q/k/v/o/gate/up/down) — identical for SFT and GRPO |
 | Board representation | FEN |
 | Move notation | UCI (e.g. `e2e4`, `e7e8q`) |
 | Output | Moves only, no reasoning |
@@ -27,8 +27,9 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 - **One example per player move** (multi-move puzzles give several examples): 50,000 puzzles → 123,301 examples. The target is the bare UCI move. Built by `src/sft_data.py` into `data/processed/`
 - **Leakage rule (all training data, SFT and GRPO):** drop any training position whose first 4 FEN fields match any player-move position of a dev or test puzzle
 - Run on Kaggle, single NVIDIA T4, fp16
-- **Optimizer settings (all SFT runs):** effective batch 32 (16 per device × grad-accum 2), cosine schedule, 3% warmup, AdamW 8-bit, weight decay 0, max sequence length 256, length grouping on; loss on the assistant move only (50k split = 3,853 steps). LR is set by the pilot sweep (Open Items)
-- Adapter is **merged** into the base model after training → this merged model is the starting point for all GRPO runs
+- **Optimizer settings (all SFT runs):** effective batch 32 (16 per device × grad-accum 2), cosine schedule, 3% warmup, AdamW 8-bit (betas 0.9/0.999, eps 1e-8), weight decay 0, grad-norm clip 1.0, max sequence length 256, length grouping on; loss on the assistant move + `<|im_end|>` only. Steps: sft_5k 387, sft_15k 1,158, 50k split 3,854 (HF Trainer counts the trailing partial accumulation as a step). Seed 0. LR is set by the pilot sweep (Open Items). Code: `src/train_sft.py`, config `configs/sft_pilot.yaml`, runner `notebooks/kaggle_sft.ipynb`
+- Every run pushes its **LoRA adapter only** to a private HF Hub repo `{user}/tiny-gambits-sft-{5k|15k|50k}-lr{lr}`, plus the latest resumable checkpoint as `last-checkpoint/` every 100 steps. For eval, the adapter is merged into the 16-bit base locally
+- Adapter is **merged** into the base model after training → this merged model is the starting point for all GRPO runs (only the final 50k model's merged copy is pushed to the Hub)
 
 ### GRPO
 
@@ -211,8 +212,9 @@ Write these down **before** running the main experiment. Draft:
 - `unsloth`, `trl`, `transformers`, `peft`, `datasets`: training
 - `vllm`: GRPO sampling and evaluation
 - `pandas`, `scipy`, `statsmodels`: data prep and statistics
-- Weights & Biases (optional): logging across Colab sessions
-- Secrets (`HF_TOKEN`, `WANDB_API_KEY`) stored in Colab/Kaggle secrets, never in notebooks
+- Weights & Biases: training curves + dev metrics for every run (project `tiny-gambits`)
+- Hugging Face Hub: private repos for adapters and resumable checkpoints
+- Secrets (`HF_TOKEN`, `WANDB_API_KEY`) are read from environment variables only; notebooks copy them from Colab/Kaggle secrets into the environment, never hardcode them
 
 ## Rules for Development
 
