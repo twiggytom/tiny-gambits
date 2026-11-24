@@ -3,6 +3,7 @@ import pytest
 
 from src.chess_utils import (
     MoveStatus,
+    PuzzleState,
     apply_setup_move,
     check_move,
     is_correct_move,
@@ -262,3 +263,25 @@ def test_player_positions_mate_in_one_and_independent_boards():
     board, move = positions[0]
     board.push(move)  # mutating a returned board must not affect a fresh call
     assert player_positions(*PUZZLE_C)[0][0].fen() != board.fen()
+
+
+# --- same-square outputs (found by the random-output harness check) ---------
+
+
+@pytest.mark.parametrize("text", ["e4e4", "a1a1", " H8H8\n", "e7e7q"])
+def test_same_square_parses_to_none_without_raising(text):
+    assert parse_uci(text) is None
+
+
+@pytest.mark.parametrize("text", ["e4e4", "a1a1", "e2e2", "e7e7q"])
+def test_check_move_same_square_is_illegal(text):
+    assert check_move(text, chess.Board()) == (MoveStatus.ILLEGAL, None)
+
+
+def test_puzzle_state_same_square_ends_illegal_and_records_text():
+    fen, moves = PUZZLE_A
+    state = PuzzleState(fen, moves)
+    state.step(" E4E4 ")
+    r = state.result()
+    assert r.outcome == "illegal" and not r.first_move_correct and not r.solved
+    assert r.moves[0]["status"] == "illegal" and r.moves[0]["uci"] == "e4e4" and r.moves[0]["output"] == " E4E4 "

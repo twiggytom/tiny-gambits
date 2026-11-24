@@ -19,7 +19,7 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 | Move notation | UCI (e.g. `e2e4`, `e7e8q`) |
 | Output | Moves only, no reasoning |
 | Output cap | 16 tokens (output hitting the cap without a valid move = unparseable) |
-| Output parsing | Strip whitespace, lowercase; entire output must be exactly one UCI move, otherwise unparseable |
+| Output parsing | Strip whitespace, lowercase; entire output must be exactly one UCI move, otherwise unparseable. A UCI-shaped output that isn't a constructible move (same from/to square, e.g. `e4e4`) counts as **illegal** |
 
 ### SFT
 

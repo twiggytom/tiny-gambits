@@ -65,11 +65,21 @@ def parse_uci(text: str) -> chess.Move | None:
     Strips surrounding whitespace and lowercases; the entire remaining output
     must be exactly one UCI move (e.g. ``e2e4``, ``e7e8q``). Anything else
     (extra tokens, punctuation, SAN, null move ``0000``) returns ``None``.
+    A same-square string (``e4e4``) also returns ``None`` because python-chess can't
+    build it as a move; ``check_move`` classifies that case as illegal, not unparseable.
     """
     cleaned = text.strip().lower()
     if not _UCI_RE.fullmatch(cleaned):
         return None
-    return chess.Move.from_uci(cleaned)
+    try:
+        return chess.Move.from_uci(cleaned)
+    except chess.InvalidMoveError:  # same from/to square, e.g. "e4e4"
+        return None
+
+
+def is_uci_shaped(text: str) -> bool:
+    """True if the cleaned output has UCI move format (square, square, optional promotion)."""
+    return _UCI_RE.fullmatch(text.strip().lower()) is not None
 
 
 class MoveStatus(Enum):
@@ -81,12 +91,16 @@ class MoveStatus(Enum):
 def check_move(text: str, board: chess.Board) -> tuple[MoveStatus, chess.Move | None]:
     """Parse ``text`` and check legality on ``board``.
 
-    Returns ``(UNPARSEABLE, None)``, ``(ILLEGAL, move)`` or ``(LEGAL, move)``.
+    Returns ``(UNPARSEABLE, None)``, ``(ILLEGAL, move)``, ``(ILLEGAL, None)`` or ``(LEGAL, move)``.
+    ``(ILLEGAL, None)`` is a UCI-shaped output that isn't a constructible move
+    (same from/to square, e.g. ``e4e4``): right format, not a legal move.
     Legal king-takes-rook castling (e.g. ``e1h1``) is normalized to standard
     UCI (``e1g1``) so it compares equal to the Lichess solution move.
     """
     move = parse_uci(text)
     if move is None:
+        if is_uci_shaped(text):
+            return MoveStatus.ILLEGAL, None
         return MoveStatus.UNPARSEABLE, None
     if not board.is_legal(move):
         return MoveStatus.ILLEGAL, move
@@ -157,7 +171,9 @@ class PuzzleState:
                 "fen": board.fen(),
                 "output": text,
                 "status": status.value,
-                "uci": move.uci() if move is not None else None,
+                # Parsed move; for an unbuildable UCI-shaped output (e4e4), the cleaned text.
+                "uci": move.uci() if move is not None
+                else (text.strip().lower() if status is MoveStatus.ILLEGAL else None),
                 "correct": correct,
             }
         )
