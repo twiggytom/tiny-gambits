@@ -51,9 +51,9 @@ def project(train_info: dict, timings: dict | None, cfg: dict) -> list[dict]:
     return rows
 
 
-def format_table(rows: list[dict]) -> str:
+def format_table(rows: list[dict], session_hours: float = 12, weekly_hours: float = 45) -> str:
     lines = [
-        "| Split | Examples | Steps | Train h | Session h (setup+train+merge+eval) | Fits 12 h session | Share of 30 h week |",
+        f"| Split | Examples | Steps | Train h | Session h (setup+train+merge+eval) | Fits {session_hours:g} h session | Share of {weekly_hours:g} h week |",
         "|---|---|---|---|---|---|---|",
     ]
     for r in rows:
@@ -77,7 +77,7 @@ def main(argv=None) -> list[dict]:
     rows = project(info, timings, cfg)
     print(f"Measured on {info['gpu']} ({info['dtype']}): {info['seconds_per_step']:.2f} s/step, "
           f"peak VRAM {info.get('peak_vram_gb')}")
-    print(format_table(rows))
+    print(format_table(rows, cfg["projection"]["kaggle_session_hours"], cfg["projection"]["kaggle_weekly_hours"]))
     return rows
 
 

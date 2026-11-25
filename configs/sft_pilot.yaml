@@ -51,4 +51,4 @@ projection:
   sft_15k: 37026
   sft: 123301
   kaggle_session_hours: 12
-  kaggle_weekly_hours: 30
+  kaggle_weekly_hours: 45        # this account's Kaggle GPU quota (user, 2026-11-25)

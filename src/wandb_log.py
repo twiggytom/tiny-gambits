@@ -30,6 +30,8 @@ def main(argv=None) -> None:
     ap.add_argument("--metrics", required=True)
     ap.add_argument("--split", default="dev")
     ap.add_argument("--timings", default=None)
+    ap.add_argument("--run-id", default=None,
+                    help="Correct W&B run id (recorded back into train_info.json); for runs whose recorded id is wrong")
     args = ap.parse_args(argv)
     if not os.environ.get("WANDB_API_KEY"):
         raise RuntimeError("WANDB_API_KEY is not set")
@@ -37,6 +39,13 @@ def main(argv=None) -> None:
 
     info = json.load(open(args.train_info))
     metrics = json.load(open(args.metrics))
+    if args.run_id and args.run_id != info.get("wandb_run_id"):
+        info["wandb_run_id_recorded"] = info.get("wandb_run_id")
+        info["wandb_run_id"] = args.run_id
+        with open(args.train_info, "w") as f:
+            json.dump(info, f, indent=2)
+            f.write("\n")
+        print(f"train_info.json: wandb_run_id corrected {info['wandb_run_id_recorded']} → {args.run_id}")
     if not info.get("wandb_run_id"):
         raise RuntimeError(f"No wandb_run_id in {args.train_info} (trained with --offline?)")
     run = wandb.init(entity=info["wandb_entity"], project=info["wandb_project"], id=info["wandb_run_id"],

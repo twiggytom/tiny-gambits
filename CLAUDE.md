@@ -81,6 +81,7 @@ src/
   rewards.py          # Stockfish (dense) and binary (sparse) rewards
   train_sft.py        # SFT (Unsloth QLoRA on GPU / peft on CPU), completion-only loss, Hub checkpoints, merge
   project_compute.py  # project 15k/50k Kaggle GPU-h from a measured sft_5k run
+  merge_adapter.py    # merge a (Hub) adapter into the 16-bit base for eval without retraining
   wandb_log.py        # attach dev metrics to the W&B run that trained the model
   train_grpo.py
   evaluate.py         # batched interactive eval harness, metrics, saved per-puzzle results (vLLM / HF backends)
@@ -112,6 +113,7 @@ SFT (Kaggle): open `notebooks/kaggle_sft.ipynb`, set `LRS` / `COMMIT` (and `RESU
 ```bash
 python -m src.train_sft --config configs/sft_pilot.yaml --lr 2e-4 --seed 0 --backend hf-cpu --offline \
   --model Qwen/Qwen2.5-0.5B-Instruct --limit 640 --output-dir /tmp/sft_smoke/adapter --merge /tmp/sft_smoke/merged
+python -m src.merge_adapter --config configs/sft_pilot.yaml --run-name <run> --out /tmp/merged/<run> --from-hub   # re-eval a pushed adapter without retraining
 python -m src.project_compute --config configs/sft_pilot.yaml --train-info outputs/<run>/train_info.json --timings outputs/<run>/timings.json
 ```
 

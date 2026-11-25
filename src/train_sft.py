@@ -91,6 +91,23 @@ def resolve_wandb_entity(env=None, api_factory=None) -> str:
     return entity
 
 
+def start_wandb_run(name: str, config: dict, env=None, wandb_module=None):
+    """Create the W&B run ourselves, with an explicit id, before the Trainer starts.
+
+    HF's WandbCallback reuses an already-active ``wandb.run`` instead of starting its own. Setting
+    ``WANDB_RUN_ID`` in the environment was not enough: on Kaggle session 1 the training run got a
+    random id (6yg4oe26), so attaching eval metrics to the expected id failed. The returned run's
+    ``.id`` is the one recorded in train_info.json.
+    """
+    env = os.environ if env is None else env
+    if wandb_module is None:
+        import wandb as wandb_module
+    run_id = f"{name}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}"
+    return wandb_module.init(
+        entity=env["WANDB_ENTITY"], project=env["WANDB_PROJECT"], id=run_id, name=name, config=config
+    )
+
+
 def _git_commit() -> str | None:
     try:
         return subprocess.run(
@@ -331,14 +348,20 @@ def main(argv=None) -> dict:
         hub_id = f"{ns}/{cfg['hub']['repo_prefix']}{name}"
         os.environ.setdefault("WANDB_PROJECT", cfg["wandb"]["project"])
         os.environ["WANDB_ENTITY"] = resolve_wandb_entity()
-        # Fix the W&B run id up front so eval metrics can be attached to this run later (src.wandb_log).
-        os.environ.setdefault("WANDB_RUN_ID", f"{name}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}")
 
     t0 = time.time()
     model, tokenizer, dtype = load_model(cfg, model_name, args.backend, args.seed)
     load_seconds = time.time() - t0
 
     from transformers import Trainer, TrainingArguments
+
+    wb_run = None
+    if not args.offline:
+        wb_run = start_wandb_run(name, {
+            "split": split, "lr": args.lr, "seed": args.seed, "base_model": model_name,
+            "backend": args.backend, "dtype": dtype, "lora": cfg["lora"], "train": cfg["train"],
+            "prompt_version": PROMPT_VERSION, "hub_repo": hub_id, "commit": _git_commit(),
+        })
 
     rows = load_examples(Path(cfg["data_dir"]) / f"{split}.jsonl", args.limit)
     max_len = cfg["model"]["max_seq_length"]
@@ -417,9 +440,9 @@ def main(argv=None) -> dict:
         "train": cfg["train"],
         "training_args": {k: v for k, v in kw.items() if isinstance(v, (int, float, str, bool, type(None)))},
         "hub_repo": hub_id,
-        "wandb_run_id": None if args.offline else os.environ["WANDB_RUN_ID"],
-        "wandb_project": None if args.offline else os.environ["WANDB_PROJECT"],
-        "wandb_entity": None if args.offline else os.environ["WANDB_ENTITY"],
+        "wandb_run_id": wb_run.id if wb_run else None,       # the run that actually holds the curves
+        "wandb_project": wb_run.project if wb_run else None,
+        "wandb_entity": wb_run.entity if wb_run else None,
         "commit": _git_commit(),
         "versions": _versions(),
         "started_utc": started.isoformat(),
@@ -430,10 +453,12 @@ def main(argv=None) -> dict:
     if not args.offline:
         import wandb
 
-        if wandb.run is not None:
-            wandb.run.summary.update({k: info[k] for k in [
-                "n_examples", "n_steps", "train_seconds", "seconds_per_step", "tokens_per_second",
-                "peak_vram_gb", "dtype", "gpu", "commit"]})
+        if wandb.run is not None and wandb.run.id != wb_run.id:
+            print(f"WARNING: Trainer logged to W&B run {wandb.run.id}, not {wb_run.id}")
+        wb_run.summary.update({k: info[k] for k in [
+            "n_examples", "n_steps", "train_seconds", "seconds_per_step", "tokens_per_second",
+            "peak_vram_gb", "dtype", "gpu", "commit"]})
+        wb_run.finish()
         trainer.push_to_hub(commit_message=f"{name}: final adapter ({n_steps} steps)")
         from huggingface_hub import upload_file
 

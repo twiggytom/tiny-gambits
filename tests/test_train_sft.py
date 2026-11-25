@@ -245,3 +245,21 @@ def test_resolve_wandb_entity():
     assert resolve_wandb_entity(env={}, api_factory=lambda: Api("me")) == "me"
     with pytest.raises(RuntimeError, match="WANDB_ENTITY"):
         resolve_wandb_entity(env={}, api_factory=lambda: Api(None))
+
+
+def test_start_wandb_run_passes_explicit_id_and_target():
+    from src.train_sft import start_wandb_run
+
+    calls = {}
+
+    class FakeWandb:
+        @staticmethod
+        def init(**kw):
+            calls.update(kw)
+            return type("Run", (), {"id": kw["id"]})()
+
+    run = start_wandb_run("sft-5k-lr2e-4", {"lr": 2e-4},
+                          env={"WANDB_ENTITY": "team", "WANDB_PROJECT": "tiny-gambits"}, wandb_module=FakeWandb)
+    assert calls["entity"] == "team" and calls["project"] == "tiny-gambits" and calls["name"] == "sft-5k-lr2e-4"
+    assert calls["id"].startswith("sft-5k-lr2e-4-") and run.id == calls["id"]
+    assert calls["config"] == {"lr": 2e-4}
