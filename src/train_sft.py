@@ -69,6 +69,28 @@ def require_secrets(names=REQUIRED_SECRETS, env=None) -> None:
         )
 
 
+def resolve_wandb_entity(env=None, api_factory=None) -> str:
+    """W&B entity (user or team) for this run: $WANDB_ENTITY, else the account's default entity.
+
+    Accounts without a default entity make the Trainer's wandb.init fail *after* the model has loaded
+    ("entity not specified, and viewer has no default entity"), so this runs first and fails fast.
+    """
+    env = os.environ if env is None else env
+    if env.get("WANDB_ENTITY"):
+        return env["WANDB_ENTITY"]
+    if api_factory is None:
+        import wandb
+
+        api_factory = wandb.Api
+    entity = getattr(api_factory(), "default_entity", None)
+    if not entity:
+        raise RuntimeError(
+            "W&B account has no default entity. Set WANDB_ENTITY to your W&B username or team "
+            "(Kaggle: add a WANDB_ENTITY secret), or set a default team in wandb.ai → User settings."
+        )
+    return entity
+
+
 def _git_commit() -> str | None:
     try:
         return subprocess.run(
@@ -308,6 +330,7 @@ def main(argv=None) -> dict:
         ns = cfg["hub"]["namespace"] or whoami()["name"]
         hub_id = f"{ns}/{cfg['hub']['repo_prefix']}{name}"
         os.environ.setdefault("WANDB_PROJECT", cfg["wandb"]["project"])
+        os.environ["WANDB_ENTITY"] = resolve_wandb_entity()
         # Fix the W&B run id up front so eval metrics can be attached to this run later (src.wandb_log).
         os.environ.setdefault("WANDB_RUN_ID", f"{name}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}")
 
@@ -396,6 +419,7 @@ def main(argv=None) -> dict:
         "hub_repo": hub_id,
         "wandb_run_id": None if args.offline else os.environ["WANDB_RUN_ID"],
         "wandb_project": None if args.offline else os.environ["WANDB_PROJECT"],
+        "wandb_entity": None if args.offline else os.environ["WANDB_ENTITY"],
         "commit": _git_commit(),
         "versions": _versions(),
         "started_utc": started.isoformat(),

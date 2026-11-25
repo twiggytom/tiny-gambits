@@ -39,7 +39,7 @@ def main(argv=None) -> None:
     metrics = json.load(open(args.metrics))
     if not info.get("wandb_run_id"):
         raise RuntimeError(f"No wandb_run_id in {args.train_info} (trained with --offline?)")
-    run = wandb.init(project=info["wandb_project"], id=info["wandb_run_id"],
+    run = wandb.init(entity=info["wandb_entity"], project=info["wandb_project"], id=info["wandb_run_id"],
                      resume="must")
     summary = flat_eval_metrics(metrics, args.split)
     if args.timings:

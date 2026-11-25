@@ -232,3 +232,16 @@ def test_length_grouping_sampler_is_used(tmp_path):
     tr = Trainer(model=torch.nn.Linear(1, 1), args=TrainingArguments(**kw), train_dataset=ds,
                  data_collator=PaddingCollator(0))
     assert isinstance(tr._get_train_sampler(), LengthGroupedSampler)
+
+
+def test_resolve_wandb_entity():
+    from src.train_sft import resolve_wandb_entity
+
+    class Api:
+        def __init__(self, entity):
+            self.default_entity = entity
+
+    assert resolve_wandb_entity(env={"WANDB_ENTITY": "team-x"}, api_factory=lambda: Api("me")) == "team-x"
+    assert resolve_wandb_entity(env={}, api_factory=lambda: Api("me")) == "me"
+    with pytest.raises(RuntimeError, match="WANDB_ENTITY"):
+        resolve_wandb_entity(env={}, api_factory=lambda: Api(None))
