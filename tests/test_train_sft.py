@@ -263,3 +263,25 @@ def test_start_wandb_run_passes_explicit_id_and_target():
     assert calls["entity"] == "team" and calls["project"] == "tiny-gambits" and calls["name"] == "sft-5k-lr2e-4"
     assert calls["id"].startswith("sft-5k-lr2e-4-") and run.id == calls["id"]
     assert calls["config"] == {"lr": 2e-4}
+
+
+def test_tokenizer_parity_check():
+    from src.train_sft import check_tokenizer_parity
+
+    tok = _qwen_tokenizer()
+    rows = [{"PuzzleId": "a", "ply": 0, "messages": MESSAGES}, {"PuzzleId": "b", "ply": 0, "messages": PROMO}]
+    assert check_tokenizer_parity(rows, tok, tok, 256) == 2
+
+    class Patched:  # a tokenizer whose chat template renders the system prompt differently
+        def __init__(self, t):
+            self.t = t
+
+        def apply_chat_template(self, msgs, **kw):
+            return self.t.apply_chat_template(
+                [{**m, "content": m["content"] + " "} if m["role"] == "system" else m for m in msgs], **kw)
+
+        def __call__(self, *a, **kw):
+            return self.t(*a, **kw)
+
+    with pytest.raises(RuntimeError, match="eval prompt"):
+        check_tokenizer_parity(rows, Patched(tok), tok, 256)

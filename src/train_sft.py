@@ -169,6 +169,25 @@ def tokenize_example(messages: list[dict], tokenizer, max_seq_length: int) -> di
     }
 
 
+def check_tokenizer_parity(rows: list[dict], train_tok, ref_tok, max_seq_length: int, n: int = 200) -> int:
+    """Raise unless the training tokenizer encodes the first ``n`` examples exactly like ``ref_tok``.
+
+    ``ref_tok`` is the plain HF tokenizer of the base model, which is what vLLM uses at eval. Unsloth
+    returns its own (possibly patched) tokenizer object, so this guards against a training prompt
+    that silently differs from the eval prompt. Returns the number of examples checked.
+    """
+    rows = rows[:n]
+    for r in rows:
+        a = tokenize_example(r["messages"], train_tok, max_seq_length)
+        b = tokenize_example(r["messages"], ref_tok, max_seq_length)
+        if a["input_ids"] != b["input_ids"] or a["labels"] != b["labels"]:
+            raise RuntimeError(
+                f"Training tokenizer differs from the base model's HF tokenizer on {r.get('PuzzleId')} "
+                f"ply {r.get('ply')}: the training prompt would not match the eval prompt"
+            )
+    return len(rows)
+
+
 class PaddingCollator:
     """Right-pad a batch: input_ids with pad id, attention_mask with 0, labels with -100."""
 
@@ -365,6 +384,10 @@ def main(argv=None) -> dict:
 
     rows = load_examples(Path(cfg["data_dir"]) / f"{split}.jsonl", args.limit)
     max_len = cfg["model"]["max_seq_length"]
+    from transformers import AutoTokenizer
+
+    n_parity = check_tokenizer_parity(rows, tokenizer, AutoTokenizer.from_pretrained(model_name), max_len)
+    print(f"Tokenizer parity with the eval (plain HF) tokenizer: {n_parity}/{n_parity} examples identical")
     train_ds = [tokenize_example(r["messages"], tokenizer, max_len) for r in rows]
 
     kw = training_kwargs(cfg, args.lr, args.seed, dtype, args.backend)
@@ -424,6 +447,8 @@ def main(argv=None) -> dict:
         "n_examples": len(train_ds),
         "n_tokens": n_tokens,
         "n_target_tokens": int(n_target_tokens),
+        "tokenizer_parity_checked": n_parity,
+        "first_prompt_rendered": tokenizer.decode(train_ds[0]["input_ids"]),
         "max_seq_len_seen": max(len(x["input_ids"]) for x in train_ds),
         "expected_steps": expected_steps(len(train_ds), cfg["train"]["per_device_batch_size"],
                                          cfg["train"]["grad_accum"], cfg["train"]["epochs"]),

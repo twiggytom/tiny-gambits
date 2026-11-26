@@ -1,7 +1,17 @@
-# GPU training environment (SFT now; GRPO later gets its own check). Installed by notebooks/kaggle_sft.ipynb
-# into a venv created with --system-site-packages on top of the eval env (requirements-gpu.txt), so
-# unsloth's dependencies (trl, peft, datasets, bitsandbytes, ...) never change the eval env.
-# UNPINNED for session 1 only (bring-up + LR 2e-4): its pip_freeze_train.txt becomes the pins here,
-# the same way requirements-gpu.txt was pinned from the Step 0 freeze. Pin before session 2 so every sweep run shares one env.
-unsloth
-wandb
+# GPU training environment (SFT; GRPO gets its own check). Installed by notebooks/kaggle_sft.ipynb into a
+# venv created with --system-site-packages --without-pip on top of the eval env (requirements-gpu.txt), so
+# unsloth's dependencies never change the eval env. Pinned 2026-11-25 from the versions that trained
+# sft-5k-lr2e-4 (train_info.json "versions"), identical to the eval-only session's pip_freeze_train.txt.
+# Python 3.13.16 (Kaggle). wandb comes from the Kaggle image (system site-packages) at 0.28.1.
+unsloth==2026.11.12
+unsloth_zoo==2026.11.12
+transformers==5.17.0
+peft==0.21.2
+trl==1.15.0
+bitsandbytes==0.50.2
+accelerate==1.15.0
+datasets==4.8.5
+huggingface_hub==1.33.0
+xformers==0.0.36
+torch==2.14.0
+wandb==0.28.1
