@@ -1,10 +1,11 @@
-# SFT pilot config: LR sweep on sft_5k at 3B (docs/PLAN.md → Pilot Phase step 1).
-# Run (Kaggle T4): python -m src.train_sft --config configs/sft_pilot.yaml --lr 2e-4 --seed 0
-# Local CPU smoke: python -m src.train_sft --config configs/sft_pilot.yaml --lr 2e-4 --seed 0 \
+# SFT config for every scale at 3B (sft_5k LR sweep, then the 5k / 15k / 50k data-scaling runs;
+# docs/PLAN.md → Pilot Phase steps 1-2). Pick the scale with --split (sft_5k | sft_15k | sft).
+# Run (Kaggle T4): python -m src.train_sft --config configs/sft.yaml --split sft_15k --seed 0
+# Local CPU smoke: python -m src.train_sft --config configs/sft.yaml --seed 0 \
 #   --backend hf-cpu --offline --model trl-internal-testing/tiny-Qwen2ForCausalLM-2.5 --limit 64
 
 data_dir: data/processed
-split: sft_5k                     # data/processed/{split}.jsonl, built by src.sft_data
+split: sft_5k                     # default; data/processed/{split}.jsonl, built by src.sft_data (override: --split)
 
 model:
   base: Qwen/Qwen2.5-3B-Instruct  # 16-bit base; also what the adapter is merged into
@@ -34,7 +35,8 @@ train:                            # PLAN → SFT → Optimizer settings (frozen)
   logging_steps: 5
   save_steps: 100                 # checkpoint (adapter + optimizer/scheduler/RNG) pushed to Hub as last-checkpoint/
 
-sweep_lrs: [1.0e-4, 2.0e-4, 5.0e-4]   # PLAN pilot step 1; picked by dev first-move acc (full-solution tiebreak)
+lr: 2.0e-4                        # FROZEN (PLAN Open Items, 2026-11-25); default for --lr
+sweep_lrs: [1.0e-4, 2.0e-4, 5.0e-4]   # record of the sft_5k sweep (PLAN pilot step 1; WRITEUP §6b.9)
 
 output_dir: outputs               # gitignored; outputs/{run_name}/
 

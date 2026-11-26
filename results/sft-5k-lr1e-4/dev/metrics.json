@@ -1,0 +1,108 @@
+{
+  "n_puzzles": 500,
+  "n_model_moves": 501,
+  "first_move_acc": 0.002,
+  "full_solution_acc": 0.0,
+  "illegal_rate": 0.9001996007984032,
+  "unparseable_rate": 0.0,
+  "first_move_illegal_rate": 0.902,
+  "first_move_unparseable_rate": 0.0,
+  "outcomes": {
+    "illegal": 451,
+    "wrong": 49
+  },
+  "by_band": {
+    "0": {
+      "n": 63,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "1": {
+      "n": 63,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "2": {
+      "n": 63,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "3": {
+      "n": 63,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "4": {
+      "n": 62,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "5": {
+      "n": 62,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "6": {
+      "n": 62,
+      "first_move_acc": 0.016129032258064516,
+      "full_solution_acc": 0.0
+    },
+    "7": {
+      "n": 62,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    }
+  },
+  "by_theme": {
+    "fork": {
+      "n": 72,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "pin": {
+      "n": 24,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "mateIn1": {
+      "n": 38,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "mateIn2": {
+      "n": 59,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "discoveredAttack": {
+      "n": 36,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "sacrifice": {
+      "n": 35,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "kingsideAttack": {
+      "n": 40,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "advancedPawn": {
+      "n": 26,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "defensiveMove": {
+      "n": 41,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    },
+    "attraction": {
+      "n": 16,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    }
+  }
+}

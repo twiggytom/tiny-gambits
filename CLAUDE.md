@@ -86,7 +86,7 @@ src/
   train_grpo.py
   evaluate.py         # batched interactive eval harness, metrics, saved per-puzzle results (vLLM / HF backends)
   analysis.py         # bootstrap CIs, McNemar, plots
-configs/              # one config per run (data.yaml = data pipeline, eval.yaml = eval harness, sft_pilot.yaml = SFT LR sweep)
+configs/              # one config per run (data.yaml = data pipeline, eval.yaml = eval harness, sft.yaml = SFT (all scales; frozen LR))
 requirements-gpu.txt  # pinned GPU eval env (Kaggle), from the Step 0 pip freeze
 requirements-train.txt # GPU training env (unsloth, wandb), installed in a venv on top of the eval env
 notebooks/            # thin Colab / Kaggle runners (kaggle_eval.ipynb = vLLM eval on one T4; kaggle_sft.ipynb = SFT train → merge → dev eval)
@@ -108,14 +108,15 @@ python -m src.evaluate --model Qwen/Qwen2.5-0.5B-Instruct --backend hf --split d
 
 Kaggle eval: open `notebooks/kaggle_eval.ipynb`, set `MODEL` / `RUN_NAME` / `COMMIT` in the first cell, then Run All (GPU T4 x2, Internet on).
 
-SFT (Kaggle): open `notebooks/kaggle_sft.ipynb`, set `LRS` / `COMMIT` (and `RESUME` after a killed session), Run All (GPU T4 x2, Internet on, secrets `HF_TOKEN` + `WANDB_API_KEY`). Local CPU smoke test:
+SFT (Kaggle, any scale): open `notebooks/kaggle_sft.ipynb`, set `SPLIT` (`sft_5k` | `sft_15k` | `sft` = 50k) / `LRS` (frozen `[2e-4]`) / `COMMIT` (and `RESUME` after a killed run, `EVAL_ONLY` if training finished but eval didn't; `CHECKS` adds vLLM determinism + vLLM/HF parity). Settings: GPU T4 x2, Internet on, secrets `HF_TOKEN` + `WANDB_API_KEY` attached. **Run it as a background job: Save Version → Save & Run All (Commit)**, not an interactive session (two interactive sessions died before the zip); download the zip from the version's Output tab. Local CPU smoke test:
 
 ```bash
-python -m src.train_sft --config configs/sft_pilot.yaml --lr 2e-4 --seed 0 --backend hf-cpu --offline \
+python -m src.train_sft --config configs/sft.yaml --seed 0 --backend hf-cpu --offline \
   --model Qwen/Qwen2.5-0.5B-Instruct --limit 640 --output-dir /tmp/sft_smoke/adapter --merge /tmp/sft_smoke/merged
-python -m src.merge_adapter --config configs/sft_pilot.yaml --run-name <run> --out /tmp/merged/<run> --from-hub   # re-eval a pushed adapter without retraining
-python -m src.project_compute --config configs/sft_pilot.yaml --train-info outputs/<run>/train_info.json --timings outputs/<run>/timings.json
+python -m src.merge_adapter --config configs/sft.yaml --run-name <run> --out /tmp/merged/<run> --from-hub   # re-eval a pushed adapter without retraining
+python -m src.project_compute --config configs/sft.yaml --train-info outputs/<run>/train_info.json --timings outputs/<run>/timings.json
 ```
 
 - **Secrets:** `HF_TOKEN` and `WANDB_API_KEY` are environment variables in every training script/notebook (locally from `.env`, on Kaggle/Colab copied from platform secrets into `os.environ`). `--offline` skips both for local tests.
+- The SFT LR is frozen at 2e-4 (`configs/sft.yaml` `lr`, the `--lr` default).
 - Run names are `sft-{5k|15k|50k}-lr{lr}` everywhere: `outputs/`, Hub repo `{user}/tiny-gambits-{run}` (private), W&B run, `results/{run}/dev/`.

@@ -7,7 +7,7 @@ Inputs:
   --train-info  outputs/{run}/train_info.json written by src.train_sft
   --timings     timings.json written by notebooks/kaggle_sft.ipynb (wall-clock per stage); optional
 
-Run: python -m src.project_compute --config configs/sft_pilot.yaml --train-info ... [--timings ...]
+Run: python -m src.project_compute --config configs/sft.yaml --train-info ... [--timings ...]
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def format_table(rows: list[dict], session_hours: float = 12, weekly_hours: floa
 
 def main(argv=None) -> list[dict]:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--config", default="configs/sft_pilot.yaml")
+    ap.add_argument("--config", default="configs/sft.yaml")
     ap.add_argument("--train-info", required=True)
     ap.add_argument("--timings", default=None)
     args = ap.parse_args(argv)

@@ -12,7 +12,7 @@ back and continues. The final adapter is pushed to the repo root. ``--merge`` (o
 
 Secrets: ``HF_TOKEN`` and ``WANDB_API_KEY`` are read from the environment only (``--offline`` skips both).
 
-Run: python -m src.train_sft --config configs/sft_pilot.yaml --lr 2e-4 --seed 0
+Run: python -m src.train_sft --config configs/sft.yaml --split sft_15k --seed 0   # LR: config's frozen lr (2e-4)
 """
 
 from __future__ import annotations
@@ -333,8 +333,8 @@ def merge_adapter(adapter_dir: str, base_model: str, out_dir: str, dtype: str) -
 
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(description="SFT (QLoRA) on one SFT split.")
-    ap.add_argument("--config", default="configs/sft_pilot.yaml")
-    ap.add_argument("--lr", type=float, required=True)
+    ap.add_argument("--config", default="configs/sft.yaml")
+    ap.add_argument("--lr", type=float, default=None, help="Default: the config's frozen lr")
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--split", default=None, help="Override the config split (e.g. sft_5k)")
     ap.add_argument("--backend", choices=["unsloth", "hf-cpu"], default="unsloth")
@@ -353,6 +353,8 @@ def main(argv=None) -> dict:
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
     split = args.split or cfg["split"]
+    if args.lr is None:
+        args.lr = float(cfg["lr"])
     model_name = args.model or cfg["model"]["base"]
     name = run_name(split, args.lr)
     out_dir = Path(args.output_dir or Path(cfg["output_dir"]) / name)

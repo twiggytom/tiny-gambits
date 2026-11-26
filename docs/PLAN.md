@@ -27,7 +27,7 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 - **One example per player move** (multi-move puzzles give several examples): 50,000 puzzles → 123,301 examples. The target is the bare UCI move. Built by `src/sft_data.py` into `data/processed/`
 - **Leakage rule (all training data, SFT and GRPO):** drop any training position whose first 4 FEN fields match any player-move position of a dev or test puzzle
 - Run on Kaggle, single NVIDIA T4, fp16
-- **Optimizer settings (all SFT runs):** effective batch 32 (16 per device × grad-accum 2), cosine schedule, 3% warmup, AdamW 8-bit (betas 0.9/0.999, eps 1e-8), weight decay 0, grad-norm clip 1.0, max sequence length 256, length grouping on; loss on the assistant move + `<|im_end|>` only. Steps: sft_5k 387, sft_15k 1,158, 50k split 3,854 (HF Trainer counts the trailing partial accumulation as a step). Seed 0. LR is set by the pilot sweep (Open Items). Code: `src/train_sft.py`, config `configs/sft_pilot.yaml`, runner `notebooks/kaggle_sft.ipynb`
+- **Optimizer settings (all SFT runs):** effective batch 32 (16 per device × grad-accum 2), cosine schedule, 3% warmup, AdamW 8-bit (betas 0.9/0.999, eps 1e-8), weight decay 0, grad-norm clip 1.0, max sequence length 256, length grouping on; loss on the assistant move + `<|im_end|>` only. Steps: sft_5k 387, sft_15k 1,158, 50k split 3,854 (HF Trainer counts the trailing partial accumulation as a step). Seed 0. LR **2e-4** (set by the pilot sweep, Open Items). Code: `src/train_sft.py`, config `configs/sft.yaml`, runner `notebooks/kaggle_sft.ipynb`
 - Every run pushes its **LoRA adapter only** to a private HF Hub repo `{user}/tiny-gambits-sft-{5k|15k|50k}-lr{lr}`, plus the latest resumable checkpoint as `last-checkpoint/` every 100 steps. For eval, the adapter is merged into the 16-bit base locally
 - Adapter is **merged** into the base model after training → this merged model is the starting point for all GRPO runs (only the final 50k model's merged copy is pushed to the Hub)
 
@@ -195,7 +195,7 @@ Write these down **before** running the main experiment. Draft:
 
 ## Open Items
 
-- [ ] SFT learning rate
+- [x] SFT learning rate: **2e-4** (frozen 2026-11-25). The sft_5k sweep (1e-4 / 2e-4 / 5e-4) could not separate the LRs on dev: first-move 0.2% / 0.6% / 0.8%, all below the random-legal baseline, McNemar p ≥ 0.375 for every pair, full-solution 0 for all. The first-move rule was therefore uninformative; 2e-4 was chosen for the lowest training loss (1.31 vs 1.36 / 1.37, mean of the last 10 logged) and the most varied outputs (49 distinct first moves vs 10 / 25). Set in `configs/sft.yaml` `lr`
 - [ ] GRPO learning rate
 - [ ] Stockfish node limit
 - [ ] Stockfish version

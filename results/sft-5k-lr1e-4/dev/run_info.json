@@ -1,0 +1,26 @@
+{
+  "run_name": "sft-5k-lr1e-4",
+  "model": "/tmp/merged/sft-5k-lr1e-4",
+  "backend": "vllm",
+  "dtype": "float16",
+  "gpu": "Tesla T4",
+  "split": "dev",
+  "limit": null,
+  "seed": 0,
+  "prompt_version": "v1",
+  "decoding": {
+    "temperature": 0,
+    "max_tokens": 16
+  },
+  "batch_size": 512,
+  "versions": {
+    "python": "3.13.16",
+    "chess": "1.11.2",
+    "pandas": "2.3.3",
+    "transformers": "5.20.2",
+    "torch": "2.14.0",
+    "vllm": "0.34.0"
+  },
+  "started_utc": "2026-11-26T02:40:44.751040+00:00",
+  "seconds": 20.339314
+}

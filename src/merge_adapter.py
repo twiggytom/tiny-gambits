@@ -6,7 +6,7 @@ the final adapter + train_info.json (not last-checkpoint/) from ``{namespace}/ti
 into ``outputs/{run}/``. It then merges in the eval dtype (T4 → fp16, L4 → bf16) and writes
 ``merge_seconds`` into ``outputs/{run}/train_info.json``.
 
-Run: python -m src.merge_adapter --config configs/sft_pilot.yaml --run-name sft-5k-lr2e-4 \
+Run: python -m src.merge_adapter --config configs/sft.yaml --run-name sft-5k-lr2e-4 \
         --out /tmp/merged/sft-5k-lr2e-4 --from-hub
 """
 
@@ -31,7 +31,7 @@ def hub_repo_id(cfg: dict, run_name: str, namespace: str) -> str:
 
 def main(argv=None) -> dict:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--config", default="configs/sft_pilot.yaml")
+    ap.add_argument("--config", default="configs/sft.yaml")
     ap.add_argument("--run-name", required=True, help="e.g. sft-5k-lr2e-4")
     ap.add_argument("--out", required=True, help="Directory for the merged model")
     ap.add_argument("--from-hub", action="store_true", help="Download the adapter from the run's Hub repo first")

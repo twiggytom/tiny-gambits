@@ -16,7 +16,7 @@ from src.train_sft import (
     training_kwargs,
 )
 
-CFG = yaml.safe_load(open("configs/sft_pilot.yaml"))
+CFG = yaml.safe_load(open("configs/sft.yaml"))
 MESSAGES = [
     {"role": "system", "content": "You are a chess engine. Reply with a single move in UCI notation."},
     {"role": "user", "content": "Position (FEN): 6k1/6pp/8/8/8/8/5PPP/RR4K1 w - - 0 1\nYou are playing White."},
@@ -50,6 +50,7 @@ def test_config_matches_frozen_plan_values():
         1, "cosine", 0.03, "adamw_8bit", 0.0)
     assert CFG["model"]["max_seq_length"] == 256 and t["group_by_length"]
     assert CFG["sweep_lrs"] == [1e-4, 2e-4, 5e-4]
+    assert CFG["lr"] == 2e-4  # frozen after the sweep (PLAN Open Items)
     assert CFG["hub"]["private"] is True
 
 
@@ -112,6 +113,7 @@ def test_parse_args():
     assert a.lr == 5e-4 and a.seed == 0 and a.backend == "unsloth" and not a.offline
     with pytest.raises(SystemExit):
         parse_args(["--lr", "2e-4"])  # seed is required
+    assert parse_args(["--seed", "0"]).lr is None  # main() falls back to the config's frozen lr
 
 
 # --- trainer kwargs --------------------------------------------------------------------
