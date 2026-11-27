@@ -1,0 +1,109 @@
+{
+  "n_puzzles": 500,
+  "n_model_moves": 586,
+  "first_move_acc": 0.162,
+  "full_solution_acc": 0.056,
+  "illegal_rate": 0.18430034129692832,
+  "unparseable_rate": 0.0,
+  "first_move_illegal_rate": 0.192,
+  "first_move_unparseable_rate": 0.0,
+  "outcomes": {
+    "illegal": 108,
+    "solved": 28,
+    "wrong": 364
+  },
+  "by_band": {
+    "0": {
+      "n": 63,
+      "first_move_acc": 0.3333333333333333,
+      "full_solution_acc": 0.2222222222222222
+    },
+    "1": {
+      "n": 63,
+      "first_move_acc": 0.20634920634920634,
+      "full_solution_acc": 0.09523809523809523
+    },
+    "2": {
+      "n": 63,
+      "first_move_acc": 0.1111111111111111,
+      "full_solution_acc": 0.0
+    },
+    "3": {
+      "n": 63,
+      "first_move_acc": 0.07936507936507936,
+      "full_solution_acc": 0.031746031746031744
+    },
+    "4": {
+      "n": 62,
+      "first_move_acc": 0.1774193548387097,
+      "full_solution_acc": 0.06451612903225806
+    },
+    "5": {
+      "n": 62,
+      "first_move_acc": 0.12903225806451613,
+      "full_solution_acc": 0.016129032258064516
+    },
+    "6": {
+      "n": 62,
+      "first_move_acc": 0.12903225806451613,
+      "full_solution_acc": 0.016129032258064516
+    },
+    "7": {
+      "n": 62,
+      "first_move_acc": 0.12903225806451613,
+      "full_solution_acc": 0.0
+    }
+  },
+  "by_theme": {
+    "fork": {
+      "n": 72,
+      "first_move_acc": 0.1527777777777778,
+      "full_solution_acc": 0.08333333333333333
+    },
+    "pin": {
+      "n": 24,
+      "first_move_acc": 0.20833333333333334,
+      "full_solution_acc": 0.08333333333333333
+    },
+    "mateIn1": {
+      "n": 38,
+      "first_move_acc": 0.21052631578947367,
+      "full_solution_acc": 0.21052631578947367
+    },
+    "mateIn2": {
+      "n": 59,
+      "first_move_acc": 0.22033898305084745,
+      "full_solution_acc": 0.06779661016949153
+    },
+    "discoveredAttack": {
+      "n": 36,
+      "first_move_acc": 0.2222222222222222,
+      "full_solution_acc": 0.027777777777777776
+    },
+    "sacrifice": {
+      "n": 35,
+      "first_move_acc": 0.08571428571428572,
+      "full_solution_acc": 0.05714285714285714
+    },
+    "kingsideAttack": {
+      "n": 40,
+      "first_move_acc": 0.125,
+      "full_solution_acc": 0.05
+    },
+    "advancedPawn": {
+      "n": 26,
+      "first_move_acc": 0.23076923076923078,
+      "full_solution_acc": 0.038461538461538464
+    },
+    "defensiveMove": {
+      "n": 41,
+      "first_move_acc": 0.1951219512195122,
+      "full_solution_acc": 0.024390243902439025
+    },
+    "attraction": {
+      "n": 16,
+      "first_move_acc": 0.0,
+      "full_solution_acc": 0.0
+    }
+  }
+}

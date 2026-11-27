@@ -1,4 +1,4 @@
-"""Project Kaggle GPU time for the 15k and 50k SFT runs from a measured sft_5k run.
+"""Project Kaggle GPU time for the other SFT splits from one measured SFT run.
 
 Training time scales with optimizer steps (all splits have the same per-example token length
 distribution). Model load, merge, dev eval and session setup are fixed costs per run.
@@ -32,7 +32,8 @@ def project(train_info: dict, timings: dict | None, cfg: dict) -> list[dict]:
     load = train_info.get("load_seconds", 0.0)
 
     rows = []
-    targets = {train_info["split"]: train_info["n_examples"], "sft_15k": p["sft_15k"], "sft": p["sft"]}
+    targets = {train_info["split"]: train_info["n_examples"]}
+    targets |= {k: v for k, v in p["examples"].items() if k not in targets}
     for split, n in targets.items():
         steps = expected_steps(n, t["per_device_batch_size"], t["grad_accum"], t["epochs"])
         train_s = load + sec_per_step * steps

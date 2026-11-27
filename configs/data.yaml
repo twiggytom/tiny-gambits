@@ -24,10 +24,11 @@ splits:
   test: 2000
   dev: 500
   grpo_candidates: 40000
-  sft: 50000
+  sft: 150000             # 2026-11-26: 50k → 150k (final SFT model); the old 50k is sft_50k below
 
 # Nested prefixes of the SFT split (pilot data-scaling curve).
 sft_subsets:
+  sft_50k: 50000           # = the previous 50k sft split (identical ids)
   sft_15k: 15000
   sft_5k: 5000
 

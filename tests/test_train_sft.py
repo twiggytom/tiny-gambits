@@ -11,6 +11,7 @@ from src.train_sft import (
     lr_tag,
     parse_args,
     resumed_start_step,
+    train_seconds_from_log,
     require_secrets,
     run_name,
     tokenize_example,
@@ -65,7 +66,8 @@ def test_lr_tag(lr, tag):
 
 def test_run_name():
     assert run_name("sft_5k", 2e-4) == "sft-5k-lr2e-4"
-    assert run_name("sft", 1e-4) == "sft-50k-lr1e-4"
+    assert run_name("sft_50k", 2e-4) == "sft-50k-lr2e-4"  # the earlier final split, now a nested subset
+    assert run_name("sft", 2e-4) == "sft-150k-lr2e-4"
 
 
 def test_expected_steps_counts_trailing_partial_accumulation():
@@ -73,6 +75,7 @@ def test_expected_steps_counts_trailing_partial_accumulation():
     assert expected_steps(12356, 16, 2) == 387
     assert expected_steps(37026, 16, 2) == 1158
     assert expected_steps(123301, 16, 2) == 3854
+    assert expected_steps(369697, 16, 2) == 11554
     assert expected_steps(64, 16, 2) == 2
     assert expected_steps(32, 16, 2, epochs=3) == 3
 
@@ -203,12 +206,14 @@ def test_projection_arithmetic():
     info = {"split": "sft_5k", "n_examples": 12356, "seconds_per_step": 3.6, "load_seconds": 60.0}
     timings = {"setup_seconds": 300.0, "merge_seconds": 120.0, "eval_seconds": 180.0}
     rows = {r["split"]: r for r in project(info, timings, CFG)}
-    assert rows["sft_5k"]["steps"] == 387 and rows["sft"]["steps"] == 3854
-    assert rows["sft"]["train_hours"] == pytest.approx((60 + 3.6 * 3854) / 3600)
-    assert rows["sft"]["session_hours"] == pytest.approx((300 + 60 + 3.6 * 3854 + 120 + 180) / 3600)
-    assert rows["sft"]["fits_session"]
+    assert rows["sft_5k"]["steps"] == 387 and rows["sft_50k"]["steps"] == 3854 and rows["sft"]["steps"] == 11554
+    assert rows["sft_50k"]["train_hours"] == pytest.approx((60 + 3.6 * 3854) / 3600)
+    assert rows["sft_50k"]["session_hours"] == pytest.approx((300 + 60 + 3.6 * 3854 + 120 + 180) / 3600)
+    assert rows["sft_50k"]["fits_session"]
+    measured = {r["split"]: r for r in project({**info, "seconds_per_step": 4.0}, timings, CFG)}
+    assert not measured["sft"]["fits_session"]  # 150k: 11,554 × 4.0 s ≈ 12.8 h > 12 h → needs a resume
     slow = {r["split"]: r for r in project({**info, "seconds_per_step": 12.0}, timings, CFG)}
-    assert not slow["sft"]["fits_session"]  # 3854 × 12 s ≈ 12.8 h > 12 h
+    assert not slow["sft_50k"]["fits_session"]  # 3854 × 12 s ≈ 12.8 h > 12 h
 
 
 def test_flat_eval_metrics():
@@ -294,3 +299,93 @@ def test_resumed_start_step(tmp_path):
     assert resumed_start_step(None) == 0
     (tmp_path / "trainer_state.json").write_text('{"global_step": 2300, "log_history": []}')
     assert resumed_start_step(str(tmp_path)) == 2300
+
+
+def test_train_seconds_from_log_sums_processes():
+    log = [
+        {"step": 5, "loss": 2.0, "process_elapsed_s": 20.0, "process_id": 0},
+        {"step": 3300, "loss": 1.0, "process_elapsed_s": 13000.0, "process_id": 0},  # last log kept by the checkpoint
+        {"step": 3305, "loss": 1.0, "process_elapsed_s": 25.0, "process_id": 3300},
+        {"step": 3854, "loss": 0.5, "process_elapsed_s": 2400.0, "process_id": 3300},
+        {"step": 3854, "train_runtime": 2400.0},
+    ]
+    assert train_seconds_from_log(log) == 15400.0
+    assert train_seconds_from_log([{"step": 5, "loss": 1.0}]) is None  # runs from before the stamps
+
+
+def test_elapsed_callback_stamps_log_history(tmp_path):
+    """Real HF Trainer on the tiny Qwen (CPU): every logged entry gets process_elapsed_s/process_id."""
+    from transformers import Trainer, TrainingArguments
+    from transformers import AutoModelForCausalLM
+    import torch
+
+    from src.train_sft import make_elapsed_callback
+
+    model = AutoModelForCausalLM.from_pretrained("trl-internal-testing/tiny-Qwen2ForCausalLM-2.5")
+    ds = [{"input_ids": [1, 2, 3, 4], "attention_mask": [1, 1, 1, 1], "labels": [-100, 2, 3, 4]}] * 8
+    tr = Trainer(model=model, args=TrainingArguments(output_dir=str(tmp_path), per_device_train_batch_size=2,
+                                                     max_steps=4, logging_steps=1, report_to=[], use_cpu=True,
+                                                     save_strategy="no"),
+                 train_dataset=ds, data_collator=PaddingCollator(0))
+    tr.add_callback(make_elapsed_callback(0))
+    tr.train()
+    stamped = [e for e in tr.state.log_history if "loss" in e]
+    assert len(stamped) == 4 and all(e["process_id"] == 0 and e["process_elapsed_s"] >= 0 for e in stamped)
+    # the final train-summary entry is stamped too, so the total runs to the end of training
+    assert train_seconds_from_log(tr.state.log_history) == tr.state.log_history[-1]["process_elapsed_s"]
+
+
+class _FakeWandb:
+    """Records wandb.init calls; ``missing`` ids raise like resume='must' on an unknown run."""
+
+    def __init__(self, missing=()):
+        self.calls, self.missing = [], set(missing)
+
+    def init(self, **kw):
+        self.calls.append(kw)
+        if kw.get("resume") == "must" and kw["id"] in self.missing:
+            raise RuntimeError("run not found")
+        cfg = type("Cfg", (), {"update": lambda self, *a, **k: None})()
+        return type("Run", (), {"id": kw["id"], "config": cfg, "entity": kw["entity"], "project": kw["project"]})()
+
+
+ENV = {"WANDB_ENTITY": "team", "WANDB_PROJECT": "tiny-gambits"}
+
+
+def test_start_wandb_run_resumes_the_recorded_run():
+    from src.train_sft import start_wandb_run
+
+    wb = _FakeWandb()
+    run = start_wandb_run("sft-150k-lr2e-4", {"lr": 2e-4}, env=ENV, wandb_module=wb, resume_id="sft-150k-lr2e-4-20261127-000000")
+    assert run.id == "sft-150k-lr2e-4-20261127-000000" and len(wb.calls) == 1
+    assert wb.calls[0]["resume"] == "must" and wb.calls[0]["entity"] == "team"
+
+
+def test_start_wandb_run_falls_back_to_a_new_run():
+    from src.train_sft import start_wandb_run
+
+    wb = _FakeWandb(missing={"gone"})
+    run = start_wandb_run("sft-150k-lr2e-4", {"lr": 2e-4}, env=ENV, wandb_module=wb, resume_id="gone")
+    assert len(wb.calls) == 2 and "resume" not in wb.calls[1]
+    assert run.id.startswith("sft-150k-lr2e-4-") and run.id != "gone"
+
+
+def test_wandb_run_id_round_trips_through_the_hub_file(tmp_path):
+    from src.train_sft import WANDB_RUN_FILE, hub_wandb_run_id, record_wandb_run_on_hub
+
+    class FakeApi:  # stands in for HfApi: writes the uploaded file locally
+        def create_repo(self, repo_id, private, exist_ok):
+            assert private and exist_ok
+
+        def upload_file(self, path_or_fileobj, path_in_repo, repo_id, commit_message):
+            (tmp_path / path_in_repo).write_bytes(path_or_fileobj)
+
+    run = type("Run", (), {"id": "sft-150k-lr2e-4-20261127-000000", "entity": "team", "project": "tiny-gambits"})()
+    record_wandb_run_on_hub("u/repo", run, private=True, api=FakeApi())
+    assert hub_wandb_run_id("u/repo", download=lambda repo, fn: str(tmp_path / fn)) == run.id
+
+    def missing(repo, fn):
+        raise FileNotFoundError(fn)
+
+    assert hub_wandb_run_id("u/old-repo", download=missing) is None  # runs from before this file existed
+    assert WANDB_RUN_FILE == "wandb_run.json"

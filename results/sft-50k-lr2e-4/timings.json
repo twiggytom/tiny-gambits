@@ -1,0 +1,8 @@
+{
+  "setup_seconds": 789.7914001941681,
+  "train_process_seconds": 2638.168607711792,
+  "merge_seconds": 33.47762060165405,
+  "eval_seconds": 186.7449290752411,
+  "commit": "cd9eeb46dc7686e7080596e57018c9e945d255d4",
+  "eval_only": false
+}

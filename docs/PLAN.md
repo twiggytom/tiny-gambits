@@ -24,12 +24,12 @@ Research question: how do different post-training methods (SFT, GRPO with dense 
 ### SFT
 
 - 1 epoch over the SFT split
-- **One example per player move** (multi-move puzzles give several examples): 50,000 puzzles → 123,301 examples. The target is the bare UCI move. Built by `src/sft_data.py` into `data/processed/`
+- **One example per player move** (multi-move puzzles give several examples): 150,000 puzzles → 369,697 examples (nested `sft_50k`: 50,000 → 123,301). The target is the bare UCI move. Built by `src/sft_data.py` into `data/processed/`
 - **Leakage rule (all training data, SFT and GRPO):** drop any training position whose first 4 FEN fields match any player-move position of a dev or test puzzle
 - Run on Kaggle, single NVIDIA T4, fp16
-- **Optimizer settings (all SFT runs):** effective batch 32 (16 per device × grad-accum 2), cosine schedule, 3% warmup, AdamW 8-bit (betas 0.9/0.999, eps 1e-8), weight decay 0, grad-norm clip 1.0, max sequence length 256, length grouping on; loss on the assistant move + `<|im_end|>` only. Steps: sft_5k 387, sft_15k 1,158, 50k split 3,854 (HF Trainer counts the trailing partial accumulation as a step). Seed 0. LR **2e-4** (set by the pilot sweep, Open Items). Code: `src/train_sft.py`, config `configs/sft.yaml`, runner `notebooks/kaggle_sft.ipynb`
-- Every run pushes its **LoRA adapter only** to a private HF Hub repo `{user}/tiny-gambits-sft-{5k|15k|50k}-lr{lr}`, plus the latest resumable checkpoint as `last-checkpoint/` every 100 steps. For eval, the adapter is merged into the 16-bit base locally
-- Adapter is **merged** into the base model after training → this merged model is the starting point for all GRPO runs (only the final 50k model's merged copy is pushed to the Hub)
+- **Optimizer settings (all SFT runs):** effective batch 32 (16 per device × grad-accum 2), cosine schedule, 3% warmup, AdamW 8-bit (betas 0.9/0.999, eps 1e-8), weight decay 0, grad-norm clip 1.0, max sequence length 256, length grouping on; loss on the assistant move + `<|im_end|>` only. Steps: sft_5k 387, sft_15k 1,158, sft_50k 3,854, sft (150k) 11,554 (HF Trainer counts the trailing partial accumulation as a step). Seed 0. LR **2e-4** (set by the pilot sweep, Open Items). Code: `src/train_sft.py`, config `configs/sft.yaml`, runner `notebooks/kaggle_sft.ipynb`
+- Every run pushes its **LoRA adapter only** to a private HF Hub repo `{user}/tiny-gambits-sft-{5k|15k|50k|150k}-lr{lr}`, plus the latest resumable checkpoint as `last-checkpoint/` every 100 steps. For eval, the adapter is merged into the 16-bit base locally
+- Adapter is **merged** into the base model after training → this merged model is the starting point for all GRPO runs (only the final 150k model's merged copy is pushed to the Hub)
 
 ### GRPO
 
@@ -114,7 +114,7 @@ All splits are disjoint. Save the list of PuzzleIds for each split to disk.
 
 | Split | Size | Sampling |
 |---|---|---|
-| SFT | 50,000 | 6,250 per rating band; nested pilot subsets `sft_15k`, `sft_5k` |
+| SFT | 150,000 | 18,750 per rating band; nested subsets `sft_50k` (= the original 50k split, identical ids), `sft_15k`, `sft_5k`. Raised from 50,000 on 2026-11-26: test, dev, GRPO candidates and the nested subsets are unchanged |
 | GRPO pool | 8,000 | Filtered by difficulty (see below) |
 | Dev | 500 | Evenly across bands (63 × 4 lower, 62 × 4 upper); pilot, sanity checks, tuning |
 | Test | 2,000 | 8 rating bands × 250; **touched only for final evaluation** |
@@ -187,7 +187,7 @@ Write these down **before** running the main experiment. Draft:
 
 0. Kaggle bring-up: run the eval harness (vLLM, T4, fp16) on dev with the untrained `Qwen2.5-3B-Instruct` as an environment smoke test only (results in ignored `results/raw/`, not a reported condition)
 1. SFT learning-rate sweep at **3B** on `sft_5k`: LR ∈ {1e-4, 2e-4, 5e-4}, picked by dev first-move accuracy (full-solution accuracy as tiebreak)
-2. SFT data-scaling curve at **3B**: 5k / 15k / 50k at the chosen LR, evaluated on dev. The 50k run **is** the final SFT model (condition 1); no separate main SFT run
+2. SFT data-scaling curve at **3B**: 5k / 15k / 50k / 150k at the chosen LR, evaluated on dev. The **150k** run **is** the final SFT model (condition 1); no separate main SFT run. (Changed 2026-11-26 from 50k: 50k reached only 16.2% dev first-move / 5.6% full-solution with the curve still rising, and a weak SFT model risks an under-filled, easy-skewed GRPO pool)
 3. SFT sanity checks on dev
 4. 20-step GRPO timing test at 3B on the L4 (check compute units used per hour in Colab's resource monitor)
 5. 500-step GRPO run → set final step count

@@ -34,7 +34,9 @@ import yaml
 from src.evaluate import dtype_for_capability
 from src.prompts import PROMPT_VERSION
 
-SPLIT_TAGS = {"sft_5k": "5k", "sft_15k": "15k", "sft": "50k"}
+# "sft" is always the full SFT split (the final model): 150k puzzles since 2026-11-26. The earlier 50k
+# final split is now the nested subset sft_50k (identical ids), so its run keeps the name sft-50k-lr2e-4.
+SPLIT_TAGS = {"sft_5k": "5k", "sft_15k": "15k", "sft_50k": "50k", "sft": "150k"}
 REQUIRED_SECRETS = ("HF_TOKEN", "WANDB_API_KEY")
 
 
@@ -91,21 +93,95 @@ def resolve_wandb_entity(env=None, api_factory=None) -> str:
     return entity
 
 
-def start_wandb_run(name: str, config: dict, env=None, wandb_module=None):
+def start_wandb_run(name: str, config: dict, env=None, wandb_module=None, resume_id: str | None = None):
     """Create the W&B run ourselves, with an explicit id, before the Trainer starts.
 
     HF's WandbCallback reuses an already-active ``wandb.run`` instead of starting its own. Setting
     ``WANDB_RUN_ID`` in the environment was not enough: on Kaggle session 1 the training run got a
     random id (6yg4oe26), so attaching eval metrics to the expected id failed. The returned run's
     ``.id`` is the one recorded in train_info.json.
+
+    ``resume_id`` (from the Hub repo's wandb_run.json after --resume) reopens that run, so a resumed
+    session keeps logging into the same W&B run. If it can't be reopened, a new run is started.
     """
     env = os.environ if env is None else env
     if wandb_module is None:
         import wandb as wandb_module
+    target = dict(entity=env["WANDB_ENTITY"], project=env["WANDB_PROJECT"], name=name)
+    if resume_id:
+        try:
+            run = wandb_module.init(**target, id=resume_id, resume="must")
+            run.config.update({"resumed_session_config": config}, allow_val_change=True)
+            print(f"W&B: resumed run {resume_id}")
+            return run
+        except Exception as e:  # deleted run, wrong entity, ...: keep training, log to a new run
+            print(f"WARNING: could not resume W&B run {resume_id} ({e}); starting a new run")
     run_id = f"{name}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}"
-    return wandb_module.init(
-        entity=env["WANDB_ENTITY"], project=env["WANDB_PROJECT"], id=run_id, name=name, config=config
-    )
+    return wandb_module.init(**target, id=run_id, config=config)
+
+
+WANDB_RUN_FILE = "wandb_run.json"  # in the run's Hub repo: which W&B run holds the curves (for --resume)
+
+
+def record_wandb_run_on_hub(hub_id: str, run, private: bool, api=None) -> None:
+    """Write {id, entity, project} of the W&B run to the Hub repo, so a resumed session can reopen it."""
+    if api is None:
+        from huggingface_hub import HfApi
+
+        api = HfApi()
+    api.create_repo(hub_id, private=private, exist_ok=True)
+    payload = {"id": run.id, "entity": run.entity, "project": run.project}
+    api.upload_file(path_or_fileobj=(json.dumps(payload, indent=2) + "\n").encode(), path_in_repo=WANDB_RUN_FILE,
+                    repo_id=hub_id, commit_message=f"W&B run {run.id}")
+
+
+def hub_wandb_run_id(hub_id: str, download=None) -> str | None:
+    """The W&B run id recorded in the Hub repo by an earlier session, or None (older runs, missing file)."""
+    if download is None:
+        from huggingface_hub import hf_hub_download as download
+    try:
+        return json.loads(Path(download(hub_id, WANDB_RUN_FILE)).read_text())["id"]
+    except Exception as e:
+        print(f"WARNING: no {WANDB_RUN_FILE} in {hub_id} ({type(e).__name__}); the resumed session gets a new W&B run")
+        return None
+
+
+def make_elapsed_callback(process_id: int):
+    """TrainerCallback that stamps each log_history entry with this process's elapsed training time.
+
+    log_history is saved in every checkpoint's trainer_state.json, so after a --resume the stamps from
+    earlier sessions survive and the total training time can be summed (``train_seconds_from_log``).
+    ``process_id`` is the step the process started from (0, or the resume step).
+    """
+    from transformers import TrainerCallback
+
+    class ElapsedTime(TrainerCallback):
+        def on_train_begin(self, args, state, control, **kw):
+            self.t0 = time.time()
+
+        def on_log(self, args, state, control, logs=None, **kw):
+            if state.log_history:
+                state.log_history[-1]["process_elapsed_s"] = time.time() - self.t0
+                state.log_history[-1]["process_id"] = process_id
+
+    return ElapsedTime()
+
+
+def train_seconds_from_log(log_history: list[dict]) -> float | None:
+    """Total training time over all processes: the last elapsed stamp of each process, summed.
+
+    An earlier process's stamps end at its last checkpoint (later logs were lost with it), so steps that
+    were redone after a resume are only counted once, in the process that kept them.
+    """
+    last: dict[int, float] = {}
+    for e in log_history:
+        if "process_elapsed_s" in e:
+            last[e["process_id"]] = max(last.get(e["process_id"], 0.0), e["process_elapsed_s"])
+    return sum(last.values()) if last else None
+
+
+def _mean(xs: list[float]) -> float | None:
+    return sum(xs) / len(xs) if xs else None
 
 
 def resumed_start_step(checkpoint_dir: str | None) -> int:
@@ -385,11 +461,14 @@ def main(argv=None) -> dict:
 
     wb_run = None
     if not args.offline:
+        resume_id = hub_wandb_run_id(hub_id) if args.resume else None
         wb_run = start_wandb_run(name, {
             "split": split, "lr": args.lr, "seed": args.seed, "base_model": model_name,
             "backend": args.backend, "dtype": dtype, "lora": cfg["lora"], "train": cfg["train"],
             "prompt_version": PROMPT_VERSION, "hub_repo": hub_id, "commit": _git_commit(),
-        })
+        }, resume_id=resume_id)
+        if wb_run.id != resume_id:  # a new run (fresh start, or the old one couldn't be reopened)
+            record_wandb_run_on_hub(hub_id, wb_run, cfg["hub"]["private"])
 
     rows = load_examples(Path(cfg["data_dir"]) / f"{split}.jsonl", args.limit)
     max_len = cfg["model"]["max_seq_length"]
@@ -425,6 +504,7 @@ def main(argv=None) -> dict:
         snapshot_download(hub_id, allow_patterns=["last-checkpoint/*"], local_dir=str(out_dir))
         resume_from = str(out_dir / "last-checkpoint")
         print(f"Resuming from {hub_id} → {resume_from}")
+    trainer.add_callback(make_elapsed_callback(resumed_start_step(resume_from)))
 
     try:
         import torch
@@ -468,6 +548,12 @@ def main(argv=None) -> dict:
         "resumed": args.resume,
         "resumed_from_step": start_step if args.resume else None,
         "steps_this_process": steps_run,
+        # Over all sessions (from the elapsed stamps in log_history, which survive a resume):
+        "train_seconds_all_processes": train_seconds_from_log(trainer.state.log_history),
+        "seconds_per_step_all_processes": (train_seconds_from_log(trainer.state.log_history) or float("nan")) / max(n_steps, 1),
+        # HF's training_loss divides only this process's loss sum by global_step, so it is wrong after a resume
+        # (50k: 0.08). The mean of all logged losses (each a mean over logging_steps) covers every step.
+        "mean_logged_loss": _mean([e["loss"] for e in trainer.state.log_history if "loss" in e]),
         "final_train_loss": result.training_loss,
         "load_seconds": load_seconds,
         "train_seconds": train_seconds,

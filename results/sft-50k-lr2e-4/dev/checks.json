@@ -1,0 +1,15 @@
+{
+  "vllm_determinism": {
+    "n": 500,
+    "identical": 500,
+    "differing": [],
+    "seconds": 136.56722283363342
+  },
+  "vllm_hf_parity": {
+    "n": 20,
+    "identical": 20,
+    "differing": [],
+    "seconds": 17.151968002319336,
+    "hf_dtype": "float16"
+  }
+}

@@ -80,7 +80,7 @@ src/
   stockfish.py        # engine wrapper, node-limited eval, caching
   rewards.py          # Stockfish (dense) and binary (sparse) rewards
   train_sft.py        # SFT (Unsloth QLoRA on GPU / peft on CPU), completion-only loss, Hub checkpoints, merge
-  project_compute.py  # project 15k/50k Kaggle GPU-h from a measured sft_5k run
+  project_compute.py  # project Kaggle GPU-h for the other SFT splits from one measured run
   merge_adapter.py    # merge a (Hub) adapter into the 16-bit base for eval without retraining
   wandb_log.py        # attach dev metrics to the W&B run that trained the model
   train_grpo.py
@@ -100,7 +100,7 @@ tests/
 pip install -r requirements.txt   # setup
 python -m pytest                  # run tests (from repo root)
 python -m src.data --config configs/data.yaml --seed 0   # build data/splits/ (~1 min)
-python -m src.sft_data --config configs/data.yaml --split sft --seed 0   # build data/processed/sft.jsonl (also sft_15k, sft_5k)
+python -m src.sft_data --config configs/data.yaml --split sft --seed 0   # build data/processed/sft.jsonl (150k puzzles; also sft_50k, sft_15k, sft_5k)
 python -m src.evaluate --config configs/eval.yaml --model <path|hub id> --backend vllm --split dev --run-name <name> --seed 0   # GPU eval; test split needs --final
 # Local CPU smoke test (needs `pip install torch`; writes to ignored results/raw/):
 python -m src.evaluate --model Qwen/Qwen2.5-0.5B-Instruct --backend hf --split dev --limit 20 --run-name raw/smoke --seed 0
@@ -108,7 +108,7 @@ python -m src.evaluate --model Qwen/Qwen2.5-0.5B-Instruct --backend hf --split d
 
 Kaggle eval: open `notebooks/kaggle_eval.ipynb`, set `MODEL` / `RUN_NAME` / `COMMIT` in the first cell, then Run All (GPU T4 x2, Internet on).
 
-SFT (Kaggle, any scale): open `notebooks/kaggle_sft.ipynb`, set `SPLIT` (`sft_5k` | `sft_15k` | `sft` = 50k) / `LRS` (frozen `[2e-4]`) / `COMMIT` (and `RESUME` after a killed run, `EVAL_ONLY` if training finished but eval didn't; `CHECKS` adds vLLM determinism + vLLM/HF parity). Settings: GPU T4 x2, Internet on, secrets `HF_TOKEN` + `WANDB_API_KEY` attached. **Run it as a background job: Save Version → Save & Run All (Commit)**, not an interactive session (two interactive sessions died before the zip); download the zip from the version's Output tab. Local CPU smoke test:
+SFT (Kaggle, any scale): open `notebooks/kaggle_sft.ipynb`, set `SPLIT` (`sft_5k` | `sft_15k` | `sft_50k` | `sft` = 150k, the final model; 150k needs 2 sessions with `RESUME = True` in the second) / `LRS` (frozen `[2e-4]`) / `COMMIT` (and `RESUME` after a killed run, `EVAL_ONLY` if training finished but eval didn't; `CHECKS` adds vLLM determinism + vLLM/HF parity). Settings: GPU T4 x2, Internet on, secrets `HF_TOKEN` + `WANDB_API_KEY` attached. **Run it as a background job: Save Version → Save & Run All (Commit)**, not an interactive session (two interactive sessions died before the zip); download the zip from the version's Output tab. Local CPU smoke test:
 
 ```bash
 python -m src.train_sft --config configs/sft.yaml --seed 0 --backend hf-cpu --offline \
@@ -119,4 +119,6 @@ python -m src.project_compute --config configs/sft.yaml --train-info outputs/<ru
 
 - **Secrets:** `HF_TOKEN` and `WANDB_API_KEY` are environment variables in every training script/notebook (locally from `.env`, on Kaggle/Colab copied from platform secrets into `os.environ`). `--offline` skips both for local tests.
 - The SFT LR is frozen at 2e-4 (`configs/sft.yaml` `lr`, the `--lr` default).
-- Run names are `sft-{5k|15k|50k}-lr{lr}` everywhere: `outputs/`, Hub repo `{user}/tiny-gambits-{run}` (private), W&B run, `results/{run}/dev/`.
+- `sft` is always the full (final) SFT split: 150k puzzles. The earlier 50k final split is now `sft_50k` (identical ids); its run is `sft-50k-lr2e-4` (its `train_info.json` still says split `sft`).
+- A resumed session (`--resume`) continues the same W&B run: its id is stored in the Hub repo as `wandb_run.json` when the run starts.
+- Run names are `sft-{5k|15k|50k|150k}-lr{lr}` everywhere: `outputs/`, Hub repo `{user}/tiny-gambits-{run}` (private), W&B run, `results/{run}/dev/`.
