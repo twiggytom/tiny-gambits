@@ -10,6 +10,7 @@ from src.train_sft import (
     expected_steps,
     lr_tag,
     parse_args,
+    resumed_start_step,
     require_secrets,
     run_name,
     tokenize_example,
@@ -287,3 +288,9 @@ def test_tokenizer_parity_check():
 
     with pytest.raises(RuntimeError, match="eval prompt"):
         check_tokenizer_parity(rows, Patched(tok), tok, 256)
+
+
+def test_resumed_start_step(tmp_path):
+    assert resumed_start_step(None) == 0
+    (tmp_path / "trainer_state.json").write_text('{"global_step": 2300, "log_history": []}')
+    assert resumed_start_step(str(tmp_path)) == 2300

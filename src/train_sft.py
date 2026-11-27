@@ -108,6 +108,13 @@ def start_wandb_run(name: str, config: dict, env=None, wandb_module=None):
     )
 
 
+def resumed_start_step(checkpoint_dir: str | None) -> int:
+    """Global step a resumed run starts from (0 without a checkpoint), from HF's trainer_state.json."""
+    if not checkpoint_dir:
+        return 0
+    return int(json.loads((Path(checkpoint_dir) / "trainer_state.json").read_text())["global_step"])
+
+
 def _git_commit() -> str | None:
     try:
         return subprocess.run(
@@ -433,6 +440,8 @@ def main(argv=None) -> dict:
 
     trainer.save_model(str(out_dir))  # adapter only (PEFT)
     n_steps = trainer.state.global_step
+    start_step = resumed_start_step(resume_from)
+    steps_run = n_steps - start_step  # steps trained by this process (all of them unless resumed)
     n_tokens = sum(len(x["input_ids"]) for x in train_ds)
     n_target_tokens = sum(sum(t != -100 for t in x["labels"]) for x in train_ds)
     info = {
@@ -457,11 +466,15 @@ def main(argv=None) -> dict:
         "n_steps": n_steps,
         "max_steps_override": args.max_steps,
         "resumed": args.resume,
+        "resumed_from_step": start_step if args.resume else None,
+        "steps_this_process": steps_run,
         "final_train_loss": result.training_loss,
         "load_seconds": load_seconds,
         "train_seconds": train_seconds,
-        "seconds_per_step": train_seconds / max(n_steps, 1),
-        "tokens_per_second": n_tokens / train_seconds if not args.max_steps else None,
+        # Timing covers only this process's steps: after --resume, the earlier session's steps are not in train_seconds.
+        # final_train_loss (HF) also averages only this process's steps then; log_history has the full curve.
+        "seconds_per_step": train_seconds / max(steps_run, 1),
+        "tokens_per_second": (n_tokens * steps_run / max(n_steps, 1)) / train_seconds if not args.max_steps else None,
         "peak_vram_gb": _peak_vram_gb(),
         "lora": cfg["lora"],
         "train": cfg["train"],
